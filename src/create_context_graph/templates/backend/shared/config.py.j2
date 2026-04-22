@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 {% if 'github' in saas_connectors %}
     github_token: str = ""
     github_repo: str = ""
+    github_limit: int = 20
+    github_issues_limit: int = 0  # 0 = use github_limit
+    github_prs_limit: int = 0
+    github_commits_limit: int = 0
 {% endif %}
 
 {% if 'notion' in saas_connectors %}

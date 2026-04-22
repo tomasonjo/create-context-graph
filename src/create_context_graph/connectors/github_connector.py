@@ -70,7 +70,10 @@ class GitHubConnector(BaseConnector):
         if not self._repo:
             raise RuntimeError("Call authenticate() first")
 
-        limit = kwargs.get("limit", 100)
+        default_limit = kwargs.get("limit", 20)
+        issues_limit = kwargs.get("issues_limit", default_limit)
+        prs_limit = kwargs.get("prs_limit", default_limit)
+        commits_limit = kwargs.get("commits_limit", default_limit)
         entities: dict[str, list[dict]] = {
             "Person": [],
             "Organization": [],
@@ -119,7 +122,7 @@ class GitHubConnector(BaseConnector):
             return user.login if user else "unknown"
 
         # Issues
-        for issue in islice(repo.get_issues(state="all", sort="updated", direction="desc"), limit):
+        for issue in islice(repo.get_issues(state="all", sort="updated", direction="desc"), issues_limit):
             if issue.pull_request:
                 continue  # Skip PRs in issues list
             user_name = _add_user(issue.user)
@@ -150,7 +153,7 @@ class GitHubConnector(BaseConnector):
                 })
 
         # Pull Requests
-        for pr in islice(repo.get_pulls(state="all", sort="updated", direction="desc"), limit):
+        for pr in islice(repo.get_pulls(state="all", sort="updated", direction="desc"), prs_limit):
             user_name = _add_user(pr.user)
             entities["PullRequest"].append({
                 "name": pr.title,
@@ -180,7 +183,7 @@ class GitHubConnector(BaseConnector):
                 })
 
         # Recent commits
-        for commit in islice(repo.get_commits(), min(limit, 50)):
+        for commit in islice(repo.get_commits(), commits_limit):
             author_name = "unknown"
             if commit.author:
                 author_name = _add_user(commit.author)

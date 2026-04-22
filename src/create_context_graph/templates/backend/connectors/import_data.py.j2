@@ -54,12 +54,16 @@ def main():
         connectors.append(("GitHub", GitHubConnector(), {
             "token": settings.github_token,
             "repo": settings.github_repo,
+        }, {
+            "issues_limit": settings.github_issues_limit or settings.github_limit,
+            "prs_limit": settings.github_prs_limit or settings.github_limit,
+            "commits_limit": settings.github_commits_limit or settings.github_limit,
         }))
 {% endraw %}{% elif conn == 'notion' %}{% raw %}
     if settings.notion_token:
         connectors.append(("Notion", NotionConnector(), {
             "token": settings.notion_token,
-        }))
+        }, {}))
 {% endraw %}{% elif conn == 'jira' %}{% raw %}
     if settings.jira_url and settings.jira_email and settings.jira_token:
         connectors.append(("Jira", JiraConnector(), {
@@ -67,17 +71,17 @@ def main():
             "email": settings.jira_email,
             "token": settings.jira_token,
             "project": settings.jira_project,
-        }))
+        }, {}))
 {% endraw %}{% elif conn == 'slack' %}{% raw %}
     if settings.slack_token:
         connectors.append(("Slack", SlackConnector(), {
             "token": settings.slack_token,
             "channels": settings.slack_channels or "all",
-        }))
+        }, {}))
 {% endraw %}{% elif conn == 'gmail' %}{% raw %}
-    connectors.append(("Gmail", GmailConnector(), {}))
+    connectors.append(("Gmail", GmailConnector(), {}, {}))
 {% endraw %}{% elif conn == 'gcal' %}{% raw %}
-    connectors.append(("Google Calendar", GCalConnector(), {}))
+    connectors.append(("Google Calendar", GCalConnector(), {}, {}))
 {% endraw %}{% elif conn == 'salesforce' %}{% raw %}
     if settings.salesforce_username and settings.salesforce_password:
         connectors.append(("Salesforce", SalesforceConnector(), {
@@ -85,19 +89,19 @@ def main():
             "password": settings.salesforce_password,
             "security_token": settings.salesforce_security_token or "",
             "domain": settings.salesforce_domain or "login",
-        }))
+        }, {}))
 {% endraw %}{% elif conn == 'linear' %}{% raw %}
     if settings.linear_api_key:
         connectors.append(("Linear", LinearConnector(), {
             "api_key": settings.linear_api_key,
             "team_key": settings.linear_team or "",
-        }))
+        }, {}))
 {% endraw %}{% elif conn == 'google-workspace' %}{% raw %}
     connectors.append(("Google Workspace", GoogleWorkspaceConnector(), {
         "client_id": settings.google_client_id or "",
         "client_secret": settings.google_client_secret or "",
         "folder_id": settings.gws_folder_id or "",
-    }))
+    }, {}))
 {% endraw %}{% elif conn == 'claude-code' %}{% raw %}
     connectors.append(("Claude Code", ClaudeCodeConnector(), {
         "scope": settings.claude_code_scope,
@@ -105,17 +109,17 @@ def main():
         "max_sessions": settings.claude_code_max_sessions or None,
         "content_mode": settings.claude_code_content_mode or None,
         "base_path": settings.claude_code_base_path or None,
-    }))
+    }, {}))
 {% endraw %}{% endif %}
 {% endfor %}
 {% raw %}
     failed = 0
-    for name, connector, creds in connectors:
+    for name, connector, creds, fetch_kwargs in connectors:
         try:
             print(f"Connecting to {name}...")
             connector.authenticate(creds)
             print(f"Fetching data from {name}...")
-            data = connector.fetch()
+            data = connector.fetch(**fetch_kwargs)
 
             for label, items in data["entities"].items():
                 all_entities.setdefault(label, []).extend(items)

@@ -25,7 +25,11 @@ FRONTEND_PORT=3000
 {% if 'github' in saas_connectors %}
 # GitHub (repository data import)
 GITHUB_TOKEN=your-github-pat-here  # Settings > Developer settings > Personal access tokens
-GITHUB_REPO=owner/repo  # e.g. neo4j-labs/create-context-graph
+GITHUB_REPO=owner/repo             # e.g. neo4j-labs/create-context-graph
+GITHUB_LIMIT=20                    # Default max for issues, PRs, and commits
+# GITHUB_ISSUES_LIMIT=20           # Override GITHUB_LIMIT for issues only
+# GITHUB_PRS_LIMIT=20              # Override GITHUB_LIMIT for pull requests only
+# GITHUB_COMMITS_LIMIT=20          # Override GITHUB_LIMIT for commits only
 {% endif %}
 {% if 'notion' in saas_connectors %}
 # Notion (knowledge base import)

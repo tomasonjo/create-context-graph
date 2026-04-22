@@ -20,6 +20,10 @@ FRONTEND_PORT=3000
 # GitHub (repository data import)
 GITHUB_TOKEN={{ connector_credentials.get('github', {}).get('token', '') }}
 GITHUB_REPO={{ connector_credentials.get('github', {}).get('repo', '') }}
+GITHUB_LIMIT=20
+# GITHUB_ISSUES_LIMIT=20   # Override GITHUB_LIMIT for issues only
+# GITHUB_PRS_LIMIT=20      # Override GITHUB_LIMIT for pull requests only
+# GITHUB_COMMITS_LIMIT=20  # Override GITHUB_LIMIT for commits only
 {% endif %}
 {% if 'notion' in saas_connectors %}
 # Notion (knowledge base import)
