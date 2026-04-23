@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from itertools import islice
 from typing import Any
 
@@ -44,6 +45,8 @@ class GitHubConnector:
         issues_limit = kwargs.get("issues_limit", default_limit)
         prs_limit = kwargs.get("prs_limit", default_limit)
         commits_limit = kwargs.get("commits_limit", default_limit)
+        _env_import_body = os.environ.get("GITHUB_IMPORT_BODY", "true").lower() not in ("false", "0", "no")
+        import_body = kwargs.get("import_body", _env_import_body)
         entities: dict[str, list[dict]] = {
             "Person": [],
             "Organization": [],
@@ -111,11 +114,11 @@ class GitHubConnector:
                 "target_name":issue.title,
                 "target_label": "Issue",
             })
-            if issue.body:
+            if import_body and issue.body:
                 documents.append({
                     "title": f"Issue #{issue.number}: {issue.title}",
                     "content": issue.body,
-                    "type": "github-issue",
+                    "type": "issue-body",
                     "metadata": {
                         "number": issue.number,
                         "state": issue.state,
@@ -140,11 +143,11 @@ class GitHubConnector:
                 "target_name":pr.title,
                 "target_label": "PullRequest",
             })
-            if pr.body:
+            if import_body and pr.body:
                 documents.append({
                     "title": f"PR #{pr.number}: {pr.title}",
                     "content": pr.body,
-                    "type": "github-pr",
+                    "type": "pr-body",
                     "metadata": {
                         "number": pr.number,
                         "state": pr.state,

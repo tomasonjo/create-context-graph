@@ -165,6 +165,95 @@ class TestGitHubConnector:
         assert "Repository" in result.entities
         assert len(result.entities["Repository"]) == 1
 
+    def _make_mock_repo_with_issue(self, mock_github_module):
+        """Helper that returns a mock repo with one issue that has a body."""
+        mock_repo = MagicMock()
+        mock_repo.full_name = "owner/repo"
+        mock_repo.description = "Test repo"
+        mock_repo.html_url = "https://github.com/owner/repo"
+        mock_repo.language = "Python"
+        mock_repo.stargazers_count = 0
+        mock_repo.organization = None
+        mock_repo.get_pulls.return_value = []
+        mock_repo.get_commits.return_value = []
+
+        mock_user = MagicMock()
+        mock_user.login = "alice"
+        mock_user.name = "Alice"
+        mock_user.email = ""
+
+        mock_issue = MagicMock()
+        mock_issue.pull_request = None
+        mock_issue.number = 1
+        mock_issue.title = "Test issue"
+        mock_issue.state = "open"
+        mock_issue.body = "Issue body content"
+        mock_issue.created_at = None
+        mock_issue.labels = []
+        mock_issue.user = mock_user
+
+        mock_repo.get_issues.return_value = [mock_issue]
+
+        mock_client = MagicMock()
+        mock_client.get_repo.return_value = mock_repo
+        mock_github_module.Github.return_value = mock_client
+        return mock_repo
+
+    def test_import_body_default_true(self):
+        mock_github_module = MagicMock()
+        self._make_mock_repo_with_issue(mock_github_module)
+
+        with patch.dict("sys.modules", {"github": mock_github_module}):
+            from create_context_graph.connectors.github_connector import GitHubConnector
+
+            conn = GitHubConnector()
+            conn.authenticate({"token": "fake", "repo": "owner/repo"})
+            result = conn.fetch()
+
+        assert len(result.documents) == 1
+        assert result.documents[0]["type"] == "issue-body"
+
+    def test_import_body_kwarg_false(self):
+        mock_github_module = MagicMock()
+        self._make_mock_repo_with_issue(mock_github_module)
+
+        with patch.dict("sys.modules", {"github": mock_github_module}):
+            from create_context_graph.connectors.github_connector import GitHubConnector
+
+            conn = GitHubConnector()
+            conn.authenticate({"token": "fake", "repo": "owner/repo"})
+            result = conn.fetch(import_body=False)
+
+        assert result.documents == []
+
+    def test_import_body_env_false(self, monkeypatch):
+        mock_github_module = MagicMock()
+        self._make_mock_repo_with_issue(mock_github_module)
+        monkeypatch.setenv("GITHUB_IMPORT_BODY", "false")
+
+        with patch.dict("sys.modules", {"github": mock_github_module}):
+            from create_context_graph.connectors.github_connector import GitHubConnector
+
+            conn = GitHubConnector()
+            conn.authenticate({"token": "fake", "repo": "owner/repo"})
+            result = conn.fetch()
+
+        assert result.documents == []
+
+    def test_import_body_kwarg_overrides_env(self, monkeypatch):
+        mock_github_module = MagicMock()
+        self._make_mock_repo_with_issue(mock_github_module)
+        monkeypatch.setenv("GITHUB_IMPORT_BODY", "false")
+
+        with patch.dict("sys.modules", {"github": mock_github_module}):
+            from create_context_graph.connectors.github_connector import GitHubConnector
+
+            conn = GitHubConnector()
+            conn.authenticate({"token": "fake", "repo": "owner/repo"})
+            result = conn.fetch(import_body=True)
+
+        assert len(result.documents) == 1
+
 
 class TestNotionConnector:
     def test_fetch_returns_normalized_data(self):
