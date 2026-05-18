@@ -148,7 +148,9 @@ class TestNamsRenderedTemplates:
         assert "MEMORY_EMBEDDING=" in env_example
         assert "anthropic/claude-haiku-4-5" in env_example
         assert "ollama/llama3" in env_example
-        assert "memory.neo4jlabs.com" in env_example
+        # Assert the full NAMS endpoint URL, not just the host substring —
+        # avoids CodeQL py/incomplete-url-substring-sanitization false positive.
+        assert "https://memory.neo4jlabs.com/v1" in env_example
 
     def test_pyproject_has_litellm_no_extraction(self, tmp_path):
         out, _ = self._render(tmp_path)
@@ -219,6 +221,75 @@ class TestNamsRenderedTemplates:
         assert "nams" in server["args"]
         assert "core" in server["args"]  # NAMS forces core profile
         assert server["env"]["MEMORY_API_KEY"] == "${MEMORY_API_KEY}"
+
+
+class TestRuntimeBackendDispatch:
+    """Generated runtime files branch on settings.memory_backend at startup."""
+
+    def _render_nams(self, tmp_path: Path) -> Path:
+        cfg = ProjectConfig(
+            project_name="Runtime Test NAMS",
+            domain="financial-services",
+            framework="strands",
+            nams_api_key="test-key-123",
+        )
+        out = tmp_path / "runtime-nams"
+        out.mkdir()
+        ProjectRenderer(cfg, load_domain(cfg.domain)).render(out)
+        return out
+
+    def _render_bolt(self, tmp_path: Path) -> Path:
+        cfg = ProjectConfig(
+            project_name="Runtime Test Bolt",
+            domain="financial-services",
+            framework="pydanticai",
+            memory_backend="bolt",
+        )
+        out = tmp_path / "runtime-bolt"
+        out.mkdir()
+        ProjectRenderer(cfg, load_domain(cfg.domain)).render(out)
+        return out
+
+    def test_main_lifespan_branches(self, tmp_path):
+        out = self._render_nams(tmp_path)
+        main_py = (out / "backend" / "app" / "main.py").read_text()
+        # NAMS path branch present
+        assert "settings.memory_backend == \"nams\"" in main_py
+        assert "connect_memory()" in main_py
+        # Health check exposes the right backend label
+        assert "memory_backend" in main_py
+        assert "nams" in main_py.lower()
+
+    def test_generate_data_branches_on_backend(self, tmp_path):
+        out = self._render_nams(tmp_path)
+        seed = (out / "backend" / "scripts" / "generate_data.py").read_text()
+        assert "settings.memory_backend == \"nams\"" in seed
+        assert "ingest_fixtures_nams" in seed
+        # bolt fallback present
+        assert "connect_neo4j" in seed
+
+    def test_memory_adapter_has_fixture_ingest(self, tmp_path):
+        out = self._render_nams(tmp_path)
+        adapter = (out / "backend" / "app" / "memory_adapter.py").read_text()
+        assert "async def ingest_fixtures_nams" in adapter
+        assert "long_term.add_entity" in adapter
+        assert "short_term.add_message" in adapter
+        assert "reasoning.start_trace" in adapter
+
+    def test_test_routes_patches_both_backends(self, tmp_path):
+        out = self._render_nams(tmp_path)
+        test_file = (out / "backend" / "tests" / "test_routes.py").read_text()
+        assert "app.memory.connect_memory" in test_file
+        assert "app.context_graph_client.connect_neo4j" in test_file
+        assert "get_memory_status" in test_file
+
+    def test_bolt_main_no_nams_short_circuit(self, tmp_path):
+        out = self._render_bolt(tmp_path)
+        main_py = (out / "backend" / "app" / "main.py").read_text()
+        # Bolt path retains the Neo4j connect flow
+        assert "connect_neo4j()" in main_py
+        # Bolt projects still know about memory backend; both branches present.
+        assert "memory_backend" in main_py
 
 
 class TestBoltRenderedTemplates:
