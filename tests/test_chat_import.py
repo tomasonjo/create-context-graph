@@ -1042,6 +1042,7 @@ class TestChatImportCLI:
         runner = CliRunner()
         result = runner.invoke(main, [
             "test-app", "--domain", "healthcare", "--framework", "pydanticai",
+            "--self-hosted",
             "--import-type", "claude-ai", "--import-file", str(path),
             "--dry-run",
         ])

@@ -24,7 +24,13 @@ import click
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from create_context_graph.config import SUPPORTED_FRAMEWORKS, FRAMEWORK_ALIASES, ProjectConfig
+from create_context_graph.config import (
+    DEFAULT_FRAMEWORK,
+    FRAMEWORK_ALIASES,
+    NAMS_SIGNUP_URL,
+    SUPPORTED_FRAMEWORKS,
+    ProjectConfig,
+)
 from create_context_graph.ontology import list_available_domains, load_domain
 from create_context_graph.renderer import ProjectRenderer
 
@@ -45,11 +51,16 @@ console = Console()
 )
 @click.option("--demo-data", is_flag=True, help="Generate synthetic demo data")
 @click.option("--ingest", is_flag=True, help="Ingest generated data into Neo4j")
-@click.option("--neo4j-uri", envvar="NEO4J_URI", help="Neo4j connection URI")
+@click.option("--self-hosted", is_flag=True, help="Use self-hosted Neo4j (Bolt) instead of NAMS hosted memory service")
+@click.option("--nams-api-key", envvar="MEMORY_API_KEY", help="NAMS API key (default backend; obtain from " + NAMS_SIGNUP_URL + ")")
+@click.option("--nams-endpoint", envvar="MEMORY_NAMS_ENDPOINT", help="Override the NAMS endpoint URL")
+@click.option("--memory-llm", envvar="MEMORY_LLM", help="LiteLLM provider string for memory entity extraction (e.g. anthropic/claude-haiku-4-5)")
+@click.option("--memory-embedding", envvar="MEMORY_EMBEDDING", help="LiteLLM provider string for memory embeddings (e.g. sentence-transformers/all-MiniLM-L6-v2)")
+@click.option("--neo4j-uri", envvar="NEO4J_URI", help="Neo4j connection URI (--self-hosted only)")
 @click.option("--neo4j-username", envvar="NEO4J_USERNAME", default="neo4j")
 @click.option("--neo4j-password", envvar="NEO4J_PASSWORD", default="password")
-@click.option("--neo4j-aura-env", type=click.Path(exists=True), help="Path to Neo4j Aura .env file with credentials")
-@click.option("--neo4j-local", is_flag=True, help="Use @johnymontana/neo4j-local for local Neo4j (no Docker)")
+@click.option("--neo4j-aura-env", type=click.Path(exists=True), help="Path to Neo4j Aura .env file with credentials (--self-hosted only)")
+@click.option("--neo4j-local", is_flag=True, help="Use @johnymontana/neo4j-local for local Neo4j (--self-hosted only)")
 @click.option("--anthropic-api-key", envvar="ANTHROPIC_API_KEY", help="Anthropic API key for LLM generation")
 @click.option("--openai-api-key", envvar="OPENAI_API_KEY", help="OpenAI API key for LLM generation")
 @click.option("--google-api-key", envvar="GOOGLE_API_KEY", help="Google/Gemini API key (required for google-adk framework)")
@@ -101,6 +112,11 @@ def main(
     framework: str | None,
     demo_data: bool,
     ingest: bool,
+    self_hosted: bool,
+    nams_api_key: str | None,
+    nams_endpoint: str | None,
+    memory_llm: str | None,
+    memory_embedding: str | None,
     neo4j_uri: str | None,
     neo4j_username: str,
     neo4j_password: str,
@@ -221,7 +237,15 @@ def main(
         from create_context_graph.wizard import _parse_aura_env
         neo4j_uri, neo4j_username, neo4j_password = _parse_aura_env(neo4j_aura_env)
 
-    # Determine neo4j_type from flags
+    # Determine memory backend. Default is NAMS unless --self-hosted is set,
+    # any --neo4j-* override is explicitly passed, or NAMS key is absent in
+    # non-interactive mode (we let the wizard handle interactive collection).
+    bolt_flag_used = bool(
+        self_hosted or neo4j_aura_env or neo4j_local or neo4j_uri
+    )
+    memory_backend_resolved = "bolt" if bolt_flag_used else "nams"
+
+    # Determine neo4j_type from flags (only meaningful on bolt backend)
     if neo4j_aura_env:
         neo4j_type_resolved = "aura"
     elif neo4j_local:
@@ -254,13 +278,27 @@ def main(
         console.print("  create-context-graph --domain healthcare --framework pydanticai --demo-data")
         raise SystemExit(1)
 
-    # If all required args are provided, skip wizard
-    if project_name and (domain or custom_domain) and framework:
+    # If all required args are provided (and a backend is determinable), skip wizard.
+    # In non-interactive mode with default NAMS backend, --nams-api-key (or
+    # MEMORY_API_KEY env) must be set unless --self-hosted is specified.
+    if project_name and (domain or custom_domain) and (framework or DEFAULT_FRAMEWORK):
+        if memory_backend_resolved == "nams" and not nams_api_key:
+            console.print(
+                "[red]Error:[/red] NAMS API key required for non-interactive mode. "
+                "Pass --nams-api-key (or set MEMORY_API_KEY), or use --self-hosted for local Neo4j."
+            )
+            console.print(f"  Sign up for a NAMS key at: {NAMS_SIGNUP_URL}")
+            raise SystemExit(1)
         config = ProjectConfig(
             project_name=project_name,
             domain=domain or "custom",
-            framework=framework,
+            framework=framework or DEFAULT_FRAMEWORK,
             data_source="saas" if connector else ("demo" if demo_data else "none"),
+            memory_backend=memory_backend_resolved,
+            nams_api_key=nams_api_key,
+            nams_endpoint=nams_endpoint or "https://memory.neo4jlabs.com/v1",
+            memory_llm=memory_llm,
+            memory_embedding=memory_embedding,
             neo4j_uri=neo4j_uri or "neo4j://localhost:7687",
             neo4j_username=neo4j_username,
             neo4j_password=neo4j_password,
@@ -357,7 +395,7 @@ def main(
         # Launch interactive wizard
         from create_context_graph.wizard import run_wizard
 
-        config = run_wizard()
+        config = run_wizard(self_hosted=bolt_flag_used)
 
     # Resolve output directory
     out = Path(output_dir) if output_dir else Path.cwd() / config.project_slug
@@ -369,13 +407,21 @@ def main(
         console.print(f"  Slug:       {config.project_slug}")
         console.print(f"  Domain:     {config.domain}")
         console.print(f"  Framework:  {config.framework}")
-        console.print(f"  Neo4j:      {config.neo4j_type} ({config.neo4j_uri})")
+        console.print(f"  Backend:    {config.memory_backend}")
+        if config.is_self_hosted:
+            console.print(f"  Neo4j:      {config.neo4j_type} ({config.neo4j_uri})")
+        else:
+            console.print(f"  NAMS:       {config.nams_endpoint}")
         console.print(f"  Data:       {config.data_source}")
         if config.saas_connectors:
             console.print(f"  Connectors: {', '.join(config.saas_connectors)}")
-        console.print(f"  Memory:     strategy={config.session_strategy}, extract={config.auto_extract}, preferences={config.auto_preferences}")
+        console.print(
+            f"  Memory:     strategy={config.session_strategy}, "
+            f"extract={config.auto_extract}, "
+            f"preferences={config.effective_auto_preferences}"
+        )
         if config.with_mcp:
-            console.print(f"  MCP:        profile={config.mcp_profile}")
+            console.print(f"  MCP:        profile={config.effective_mcp_profile}")
         console.print(f"  Output:     {out}")
         console.print()
         return
@@ -453,32 +499,33 @@ def main(
 
     # Reset Neo4j database if requested
     if reset_database:
-        console.print("\n[bold]Resetting Neo4j database...[/bold]")
-        from create_context_graph.ingest import reset_neo4j
+        console.print("\n[bold]Resetting memory store...[/bold]")
+        from create_context_graph.ingest import reset_memory_store
 
         try:
-            reset_neo4j(
-                config.neo4j_uri,
-                config.neo4j_username,
-                config.neo4j_password,
-            )
-            console.print("  [green]Database cleared[/green]")
+            reset_memory_store(config)
+            console.print("  [green]Memory store cleared[/green]")
         except Exception as e:
-            console.print(f"  [red]Failed to reset database:[/red] {e}")
+            console.print(f"  [red]Failed to reset memory store:[/red] {e}")
 
-    # Ingest into Neo4j if requested
+    # Ingest into memory store if requested
     if ingest and fixture_path.exists():
-        console.print("\n[bold]Ingesting data into Neo4j...[/bold]")
+        target = "NAMS" if config.is_nams else "Neo4j"
+        console.print(f"\n[bold]Ingesting data into {target}...[/bold]")
         from create_context_graph.ingest import ingest_data
 
-        ingest_data(
-            fixture_path,
-            ontology,
-            config.neo4j_uri,
-            config.neo4j_username,
-            config.neo4j_password,
-        )
-        console.print("  [dim]Tip: Use --reset-database if you previously ingested a different domain into this Neo4j instance.[/dim]")
+        ingest_data(fixture_path, ontology, config)
+        if config.is_nams:
+            console.print(
+                "  [yellow]Note:[/yellow] NAMS write API does not yet support "
+                "relationships, entity properties, or preferences. Those have "
+                "been collapsed into entity descriptions where possible."
+            )
+        else:
+            console.print(
+                "  [dim]Tip: Use --reset-database if you previously ingested a "
+                "different domain into this Neo4j instance.[/dim]"
+            )
 
     # Success message
     console.print()
@@ -491,23 +538,62 @@ def main(
     def _step(cmd: str, comment: str) -> None:
         console.print(f"  [bold]{cmd}[/bold]{' ' * (18 - len(cmd))}# {comment}")
 
-    console.print(f"  [bold]cd {display_path}[/bold]")
-    _step("make install",     "Install dependencies")
-    if config.neo4j_type == "docker":
-        _step("make docker-up",   "Start Neo4j")
-    elif config.neo4j_type == "local":
-        _step("make neo4j-start", "Start Neo4j (requires Node.js)")
-    if config.saas_connectors:
-        _step("make import",      "Fetch real data from connected services")
-        _step("make seed",        "Apply schema + ingest data into Neo4j")
-    elif ingest:
-        _step("make seed",        "Re-seed sample data (already ingested)")
+    # Backend-aware "next steps" panel.
+    if config.is_nams:
+        from rich.panel import Panel
+
+        if not config.anthropic_api_key:
+            console.print(
+                Panel(
+                    "[bold yellow]Before you can chat:[/bold yellow] edit "
+                    f"[bold].env[/bold] in [bold]{display_path}[/bold] and set "
+                    "[bold]ANTHROPIC_API_KEY[/bold] — the Strands agent (and most "
+                    "frameworks) needs it to call the LLM.",
+                    border_style="yellow",
+                    title="Action required",
+                )
+            )
+        console.print(f"  [bold]cd {display_path}[/bold]")
+        _step("make install",     "Install dependencies")
+        if config.saas_connectors:
+            _step("make import",      "Fetch real data from connected services")
+            _step("make seed",        "Ingest data into NAMS (entities only — relationships not yet supported)")
+        elif ingest or config.generate_data:
+            _step("make seed",        "Ingest demo data into NAMS (entities only)")
+        _step("make start",       "Start backend + frontend")
+        if config.with_mcp:
+            _step("make mcp-server",  "Start MCP server for Claude Desktop")
+        console.print()
+        console.print("  Backend:  http://localhost:8000")
+        console.print("  Frontend: http://localhost:3000")
+        console.print()
+        console.print(
+            "  [dim]Want the full fixture demo (relationships, properties, "
+            "decision-trace graph)? Re-run with:[/dim]"
+        )
+        console.print(
+            "    [bold]create-context-graph "
+            f"{config.project_slug} --self-hosted --demo[/bold]"
+        )
+        console.print()
     else:
-        _step("make seed",        "Apply schema + seed sample data")
-    if config.with_mcp:
-        _step("make mcp-server",  "Start MCP server for Claude Desktop")
-    _step("make start",       "Start backend + frontend")
-    console.print()
-    console.print("  Backend:  http://localhost:8000")
-    console.print("  Frontend: http://localhost:3000")
-    console.print()
+        console.print(f"  [bold]cd {display_path}[/bold]")
+        _step("make install",     "Install dependencies")
+        if config.neo4j_type == "docker":
+            _step("make docker-up",   "Start Neo4j")
+        elif config.neo4j_type == "local":
+            _step("make neo4j-start", "Start Neo4j (requires Node.js)")
+        if config.saas_connectors:
+            _step("make import",      "Fetch real data from connected services")
+            _step("make seed",        "Apply schema + ingest data into Neo4j")
+        elif ingest:
+            _step("make seed",        "Re-seed sample data (already ingested)")
+        else:
+            _step("make seed",        "Apply schema + seed sample data")
+        if config.with_mcp:
+            _step("make mcp-server",  "Start MCP server for Claude Desktop")
+        _step("make start",       "Start backend + frontend")
+        console.print()
+        console.print("  Backend:  http://localhost:8000")
+        console.print("  Frontend: http://localhost:3000")
+        console.print()

@@ -6,9 +6,23 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from .env file."""
 
+    # Memory backend: 'nams' (hosted) or 'bolt' (self-hosted Neo4j).
+    memory_backend: str = "{{ memory_backend }}"
+
+    # NAMS hosted memory service
+    memory_api_key: str = ""
+    memory_nams_endpoint: str = "{{ nams_endpoint }}"
+
+    # Self-hosted Neo4j (only used when memory_backend == 'bolt')
     neo4j_uri: str = "{{ neo4j_uri }}"
     neo4j_username: str = "{{ neo4j_username }}"
     neo4j_password: str = "{{ neo4j_password }}"
+
+    # LiteLLM provider strings for memory layer (optional — sane defaults applied)
+    memory_llm: str = "{{ memory_llm }}"
+    memory_embedding: str = "{{ memory_embedding }}"
+
+    # LLM provider keys for the agent
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     domain_id: str = "{{ domain.id }}"

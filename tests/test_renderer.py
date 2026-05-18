@@ -442,11 +442,12 @@ class TestProjectRenderer:
         assert "resolve_session_id" in memory
 
     def test_mcp_files_generated_when_enabled(self, tmp_output):
-        """Verify MCP files are generated when with_mcp=True."""
+        """Verify MCP files are generated when with_mcp=True (bolt path uses requested profile)."""
         config = ProjectConfig(
             project_name="Test MCP App",
             domain="financial-services",
             framework="pydanticai",
+            memory_backend="bolt",
             with_mcp=True,
             mcp_profile="extended",
         )
@@ -471,15 +472,18 @@ class TestProjectRenderer:
         assert not (tmp_output / "mcp").exists()
 
     def test_pyproject_bumps_memory_version(self, financial_config, tmp_output):
-        """Verify generated pyproject.toml requires neo4j-agent-memory>=0.1.0."""
+        """Verify generated pyproject.toml requires neo4j-agent-memory>=0.4.0,<0.6.0."""
         ontology = load_domain(financial_config.domain)
         renderer = ProjectRenderer(financial_config, ontology)
         renderer.render(tmp_output)
 
         pkg = (tmp_output / "backend" / "pyproject.toml").read_text()
         assert "neo4j-agent-memory" in pkg
-        assert ">=0.1.0" in pkg
-        assert ">=0.0.5" not in pkg
+        assert ">=0.4.0" in pkg
+        assert "<0.6.0" in pkg
+        # Self-hosted (financial_config) includes extraction + fuzzy extras
+        assert "extraction" in pkg
+        assert "fuzzy" in pkg
 
     def test_makefile_has_mcp_target_when_enabled(self, tmp_output):
         """Verify Makefile includes mcp-server target when with_mcp=True."""
@@ -487,6 +491,7 @@ class TestProjectRenderer:
             project_name="Test MCP App",
             domain="healthcare",
             framework="pydanticai",
+            memory_backend="bolt",
             with_mcp=True,
         )
         ontology = load_domain(config.domain)

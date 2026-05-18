@@ -63,11 +63,12 @@ def tmp_output(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def financial_config() -> ProjectConfig:
-    """A minimal config for the financial-services domain."""
+    """A minimal config for the financial-services domain (self-hosted bolt)."""
     return ProjectConfig(
         project_name="Test Financial App",
         domain="financial-services",
         framework="pydanticai",
+        memory_backend="bolt",
         neo4j_uri="neo4j://localhost:7687",
         neo4j_username="neo4j",
         neo4j_password="password",
@@ -77,15 +78,27 @@ def financial_config() -> ProjectConfig:
 
 @pytest.fixture
 def healthcare_config() -> ProjectConfig:
-    """A config for the healthcare domain with Claude Agent SDK."""
+    """A config for the healthcare domain with Claude Agent SDK (self-hosted bolt)."""
     return ProjectConfig(
         project_name="Test Health App",
         domain="healthcare",
         framework="claude-agent-sdk",
+        memory_backend="bolt",
         neo4j_uri="neo4j://localhost:7687",
         neo4j_username="neo4j",
         neo4j_password="password",
         neo4j_type="docker",
+    )
+
+
+@pytest.fixture
+def nams_config() -> ProjectConfig:
+    """A config that targets the default NAMS backend."""
+    return ProjectConfig(
+        project_name="Test NAMS App",
+        domain="financial-services",
+        framework="strands",
+        nams_api_key="test-key-123",
     )
 
 
@@ -103,11 +116,12 @@ def healthcare_ontology():
 
 @pytest.fixture
 def mcp_config() -> ProjectConfig:
-    """A config with MCP server enabled."""
+    """A config with MCP server enabled (self-hosted bolt)."""
     return ProjectConfig(
         project_name="Test MCP App",
         domain="financial-services",
         framework="pydanticai",
+        memory_backend="bolt",
         neo4j_uri="neo4j://localhost:7687",
         neo4j_username="neo4j",
         neo4j_password="password",

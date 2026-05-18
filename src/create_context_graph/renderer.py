@@ -265,6 +265,12 @@ class ProjectRenderer:
             "anthropic_api_key": self.config.anthropic_api_key or "",
             "openai_api_key": self.config.openai_api_key or "",
             "google_api_key": self.config.google_api_key or "",
+            "memory_backend": self.config.memory_backend,
+            "is_nams": self.config.is_nams,
+            "nams_api_key": self.config.nams_api_key or "",
+            "nams_endpoint": self.config.nams_endpoint,
+            "memory_llm": self.config.memory_llm or "",
+            "memory_embedding": self.config.memory_embedding or "",
             "system_prompt": self._build_system_prompt(),
             "cypher_schema": generate_cypher_schema(self.ontology),
             "pydantic_models": generate_pydantic_models(self.ontology),
@@ -272,10 +278,10 @@ class ProjectRenderer:
             "saas_connectors": self.config.saas_connectors,
             "connector_credentials": self.config.saas_credentials,
             "with_mcp": self.config.with_mcp,
-            "mcp_profile": self.config.mcp_profile,
+            "mcp_profile": self.config.effective_mcp_profile,
             "session_strategy": self.config.session_strategy,
             "auto_extract": self.config.auto_extract,
-            "auto_preferences": self.config.auto_preferences,
+            "auto_preferences": self.config.effective_auto_preferences,
         }
 
     def _build_system_prompt(self) -> str:
@@ -409,6 +415,7 @@ class ProjectRenderer:
             "backend/shared/models.py.j2": "app/models.py",
             "backend/shared/routes.py.j2": "app/routes.py",
             "backend/shared/memory.py.j2": "app/memory.py",
+            "backend/shared/memory_adapter.py.j2": "app/memory_adapter.py",
             "backend/shared/pyproject.toml.j2": "pyproject.toml",
         }
         for template_name, output_name in shared_templates.items():

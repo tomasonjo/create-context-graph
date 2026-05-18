@@ -1,5 +1,71 @@
 # Changelog
 
+## v0.11.0 — NAMS by Default + LiteLLM Provider Injection (2026-05-19)
+
+### Breaking Changes
+
+- **Default memory backend flipped from self-hosted Neo4j to NAMS** — `create-context-graph my-app` now scaffolds against the hosted [Neo4j Agent Memory Service](https://memory.neo4jlabs.com) by default. The wizard collects a NAMS API key as its memory step. Use `--self-hosted` (or any explicit `--neo4j-*` flag) to opt into the legacy bolt path. Existing scaffolded projects are unaffected; only newly generated projects pick up the new default.
+- **Generated `pyproject.toml` pins `neo4j-agent-memory>=0.4.0,<0.6.0`** (was `>=0.1.0`). Extras conditional on backend: NAMS scaffolds get `[litellm,sentence-transformers]`; self-hosted scaffolds additionally get `[extraction,fuzzy]` for local entity extraction.
+- **`ingest_data()` library signature changed** — now takes a `ProjectConfig` instead of separate Neo4j credentials. CLI users see no change; programmatic users of the `create_context_graph` package must update callers.
+- **`MEMORY_API_KEY` env var added** to generated `.env` files. When set, the library auto-routes to NAMS even if `MEMORY_BACKEND` is unspecified.
+
+### New Features
+
+- **NAMS hosted backend support** — Generated `app/memory.py` now constructs `MemoryClient(MemorySettings(backend="nams", nams=NamsConfig(api_key=...)))` on the NAMS path. Sign-up panel printed in the wizard with the `https://memory.neo4jlabs.com` landing URL.
+- **`--self-hosted` CLI flag** — Preserves the legacy bolt-Neo4j path with full demo fixtures, schema DDL, and relationship-rich graph view. Recommended for workshops, screen recordings, demos, and air-gapped use.
+- **LiteLLM provider injection** — Generated memory layer reads `MEMORY_LLM` and `MEMORY_EMBEDDING` env vars (LiteLLM-style provider strings, e.g. `anthropic/claude-haiku-4-5`, `bedrock/anthropic.claude-3-haiku-20240307-v1:0`, `vertex_ai/gemini-1.5-flash`, `ollama/llama3`). Native adapters resolve first (Anthropic, OpenAI, Bedrock, Vertex AI, SentenceTransformers); everything else routes through LiteLLM. Default fallback: `sentence-transformers/all-MiniLM-L6-v2` for embeddings, `anthropic/claude-haiku-4-5` (or `openai/gpt-4o-mini`) for entity extraction.
+- **Streamlined 6-prompt wizard** — Collapsed from 11 prompts. Domain picker switched to `questionary.autocomplete`. Inline Anthropic-key prompt removed (deferred to post-scaffold `.env` editing with a prominent reminder panel). Advanced settings (MCP toggle, extraction toggles, extra API keys) gated behind a single Y/N prompt. Median wizard run is now ~6 prompts vs ~11.
+- **Default agent framework: AWS Strands** — was previously unselected; the wizard now suggests `strands` as the default. All 8 frameworks remain supported.
+- **Backend-aware route adapters** — Generated `app/routes.py` dispatches `/expand`, `/documents`, `/traces`, `/schema/visualization`, `/entities/{name}`, `/search`, `/cypher` to the NAMS REST adapter (`app/memory_adapter.py`) or bolt Cypher path based on `MEMORY_BACKEND`. `/gds/*` returns 501 on NAMS.
+- **Backend-aware MCP config** — `claude_desktop_config.json` ships in NAMS or bolt shape depending on the scaffold. NAMS forces `mcp_profile=core` because extended-profile tools rely on unsupported endpoints (preferences/facts).
+- **Backend-aware `make reset`** — On NAMS, enumerates entities via REST and deletes one-by-one (slow but correct, with a printed warning). On bolt, retains today's `MATCH (n) DETACH DELETE n`.
+- **NAMS-aware `make seed`** — Generated `generate_data.py` branches on `settings.memory_backend`. On NAMS, delegates to `memory_adapter.ingest_fixtures_nams()` which does the B-partial port (see below). On bolt, applies schema + ingests via Cypher.
+- **Health endpoint backend-aware** — `/health` returns `{"memory_backend": "nams", "nams": <bool>}` on NAMS or `{"memory_backend": "bolt", "neo4j": <bool>}` on self-hosted.
+
+### NAMS Write-Path Caveats (v0.4)
+
+The NAMS REST API exposes a narrower write surface than bolt Cypher. The CLI does **best-effort B-partial ingest** with these documented gaps:
+
+- **Relationships are dropped on NAMS** — `add_relationship` is not yet exposed by NAMS REST. The CLI logs a single warning per ingest run. The graph view shows entities but no edges.
+- **Entity properties collapse into `description`** — NAMS REST accepts only `{name, type, description}` per entity. All other properties (status, severity, blood_type, etc.) are serialized into a markdown block inside `description`. The frontend property panel renders this markdown so the data remains readable.
+- **Preferences and facts are unsupported** — `auto_preferences=True` is forced off on NAMS via `ProjectConfig.effective_auto_preferences`. `auto_extract=True` still runs but extracted relationships are silently dropped.
+- **Schema DDL skipped on NAMS** — NAMS owns its schema. `CREATE CONSTRAINT`/`CREATE INDEX` statements from `generate_cypher_schema()` are no-ops on the NAMS path.
+
+For the full relationship-rich demo experience, scaffold with `--self-hosted --demo`.
+
+### New CLI Flags
+
+| Flag | Purpose |
+|---|---|
+| `--self-hosted` | Use self-hosted Neo4j instead of NAMS (the v0.10 default behavior) |
+| `--nams-api-key` | NAMS API key (also reads `MEMORY_API_KEY` env) |
+| `--nams-endpoint` | Override NAMS endpoint URL (defaults to `https://memory.neo4jlabs.com/v1`) |
+| `--memory-llm` | LiteLLM provider string for memory entity extraction |
+| `--memory-embedding` | LiteLLM provider string for memory embeddings |
+
+### New Docs Pages
+
+- [Use NAMS](docs/docs/how-to/use-nams.md) — sign-up, API key, switching between NAMS and self-hosted, troubleshooting
+- [Configure Memory Providers](docs/docs/how-to/configure-memory-providers.md) — LiteLLM provider strings, native adapters, default fallback behavior, per-provider auth examples
+- [Memory Backends](docs/docs/explanation/memory-backends.md) — conceptual NAMS vs self-hosted comparison, choosing per-project, frontend dispatch architecture
+
+### Tests
+
+- **1,177 passing fast tests** (was 1,102 in v0.10). 50 new tests across 4 files:
+  - `test_ingest_nams.py` (15) — `_ingest_with_nams` dispatch, entity serialization, document/trace ingestion, relationship-skip warning, missing-API-key error path, `reset_memory_store` for both backends.
+  - `test_wizard.py` (7) — drives the interactive wizard via patched questionary; covers NAMS happy path, NAMS+advanced, self-hosted Docker, self-hosted existing-Neo4j, and edge cases.
+  - `test_memory_adapter.py` (18) — renders a project, imports the generated `memory_adapter.py` via `importlib`, exercises every adapter function with `AsyncMock` MemoryClient.
+  - `test_routes_integration.py` (10, gated by `pytest.importorskip("fastapi")`) — renders a NAMS or bolt project, mounts the generated FastAPI app via `TestClient`, asserts correct dispatch on `/health`, `/documents`, `/search`, `/schema/visualization`, `/expand`, `/traces`, `/gds/*`.
+  - `test_nams_adapter.py` extended with 5 runtime dispatch tests.
+- **`scripts/e2e_smoke_test.py`** — added `--backend {bolt,nams}` flag. `bolt` default preserves existing flow; `nams` exercises the hosted-memory scaffold path (requires `MEMORY_API_KEY` env).
+- **`[dev]` extras** — now include `fastapi`, `httpx`, `pydantic-settings` so route integration tests run in CI.
+
+### Implementation Notes
+
+- **`MemorySettings` / `MemoryClient` / `MemoryIntegration` construction split** in `memory.py.j2` — explicit `MemoryClient(settings)` then `MemoryIntegration(client=client, ...)` (instead of having `MemoryIntegration` build the client implicitly). Enables NAMS backend + LiteLLM provider injection in one place.
+- **CodeQL false-positive fix** — `test_nams_adapter.py` assertion changed from substring host check (`"memory.neo4jlabs.com" in env_example`) to full URL match (`"https://memory.neo4jlabs.com/v1" in env_example`) to satisfy `py/incomplete-url-substring-sanitization`.
+- **Generated test scaffold** (`backend/tests/test_routes.py`) — fixture patches both bolt and NAMS connect/close paths so the generated test suite works regardless of backend.
+
 ## v0.10.0 — Local-File Document Connector (2026-05-18)
 
 ### New Connector

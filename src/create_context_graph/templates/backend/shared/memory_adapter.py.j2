@@ -1,0 +1,421 @@
+"""Backend-aware adapters for graph endpoints + fixture ingestion.
+
+When ``settings.memory_backend == "nams"`` the NAMS REST API has a restricted
+surface compared to bolt Cypher — these helpers translate REST responses into
+the shape the frontend expects, and provide a NAMS-flavored ``make seed``
+implementation.
+
+When ``settings.memory_backend == "bolt"`` the helpers delegate to the existing
+Cypher-based functions in ``app.context_graph_client``.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any
+
+from app.config import settings
+from app.memory import get_client
+
+logger = logging.getLogger(__name__)
+
+
+_RESERVED_DESCRIPTION_KEYS = {"name", "description", "domain", "id", "uuid"}
+
+
+def _format_attribute(key: str, value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (list, dict)):
+        value = json.dumps(value, default=str)
+    pretty_key = key.replace("_", " ").strip().capitalize()
+    return f"**{pretty_key}**: {value}"
+
+
+def _serialize_entity_to_description(item: dict[str, Any], label: str, pole_type: str) -> str:
+    parts: list[str] = []
+    existing = (item.get("description") or "").strip()
+    if existing:
+        parts.append(existing)
+    else:
+        parts.append(f"{label}.")
+    attr_lines = []
+    for key, value in item.items():
+        if key in _RESERVED_DESCRIPTION_KEYS:
+            continue
+        line = _format_attribute(key, value)
+        if line:
+            attr_lines.append(line)
+    if attr_lines:
+        parts.append("")
+        parts.extend(attr_lines)
+    parts.append("")
+    parts.append(f"_pole_type: {pole_type}_")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Fixture ingestion (NAMS)
+# ---------------------------------------------------------------------------
+
+
+_POLE_TYPE_HINTS = {
+    # Best-effort name → POLE+O mapping used when an entity lacks an explicit type
+    "Person": "PERSON", "Organization": "ORGANIZATION", "Location": "LOCATION",
+    "Event": "EVENT", "Object": "OBJECT",
+}
+
+
+async def ingest_fixtures_nams(fixture_data: dict[str, Any], domain_id: str) -> None:
+    """Best-effort B-partial port of ``data/fixtures.json`` into NAMS.
+
+    Entities land with all properties markdown-serialized into the description
+    field. Relationships, preferences, and facts are unsupported by the NAMS
+    write API and logged-skipped. Documents land as ``role="document"``
+    short-term messages. Decision traces land via the reasoning REST API.
+    """
+    client = get_client()
+    if client is None:
+        print("  [warn] NAMS client not connected. Run from inside the FastAPI lifespan or set MEMORY_API_KEY.")
+        return
+
+    # 1. Entities
+    entities = fixture_data.get("entities", {})
+    entity_count = 0
+    for label, items in entities.items():
+        pole_type = _POLE_TYPE_HINTS.get(label, "OBJECT")
+        for item in items:
+            name = item.get("name") or f"{label}-{entity_count}"
+            try:
+                await client.long_term.add_entity(
+                    name=name,
+                    entity_type=pole_type,
+                    description=_serialize_entity_to_description(item, label, pole_type),
+                )
+                entity_count += 1
+            except Exception as e:
+                print(f"  [warn] Entity {name}: {e}")
+    print(f"  [1/4] Ingested {entity_count} entities")
+
+    # 2. Relationships (logged-skipped)
+    rel_count = len(fixture_data.get("relationships", []))
+    if rel_count:
+        print(f"  [2/4] Skipped {rel_count} relationships — not supported by NAMS write API")
+
+    # 3. Documents → short-term messages
+    doc_session = f"docs-{domain_id}"
+    doc_count = 0
+    for doc in fixture_data.get("documents", []):
+        try:
+            await client.short_term.add_message(
+                session_id=doc_session,
+                role="document",
+                content=doc.get("content", ""),
+                metadata={
+                    "title": doc.get("title", ""),
+                    "template_id": doc.get("template_id", ""),
+                    "template_name": doc.get("template_name", ""),
+                    "domain": domain_id,
+                },
+            )
+            doc_count += 1
+        except Exception as e:
+            print(f"  [warn] Document: {e}")
+    print(f"  [3/4] Ingested {doc_count} documents (as role=document messages)")
+
+    # 4. Decision traces via reasoning API
+    trace_session = f"traces-{domain_id}"
+    trace_count = 0
+    for trace_data in fixture_data.get("traces", []):
+        try:
+            trace = await client.reasoning.start_trace(
+                session_id=trace_session,
+                task=trace_data.get("task", ""),
+            )
+            trace_id = getattr(trace, "id", None) or trace_data.get("id", "")
+            for step in trace_data.get("steps", []):
+                await client.reasoning.add_step(
+                    trace_id=trace_id,
+                    thought=step.get("thought", ""),
+                    action=step.get("action", ""),
+                    observation=step.get("observation", ""),
+                )
+            await client.reasoning.complete_trace(
+                trace_id=trace_id,
+                outcome=trace_data.get("outcome", ""),
+                success=True,
+            )
+            trace_count += 1
+        except Exception as e:
+            print(f"  [warn] Trace: {e}")
+    print(f"  [4/4] Ingested {trace_count} decision traces")
+
+
+# ---------------------------------------------------------------------------
+# Documents — on NAMS, stored as short-term messages with role="document"
+# ---------------------------------------------------------------------------
+
+
+async def list_documents_nams(
+    template_id: str | None, skip: int, limit: int
+) -> list[dict[str, Any]]:
+    client = get_client()
+    if client is None:
+        return []
+    session_id = f"docs-{settings.domain_id}"
+    try:
+        conversation = await client.short_term.get_conversation(session_id=session_id)
+        messages = getattr(conversation, "messages", []) or []
+    except Exception as e:
+        logger.info("list_documents_nams: get_conversation failed: %s", e)
+        return []
+
+    docs: list[dict[str, Any]] = []
+    for msg in messages:
+        meta = getattr(msg, "metadata", None) or {}
+        if not isinstance(meta, dict):
+            try:
+                meta = json.loads(meta)  # type: ignore[arg-type]
+            except Exception:
+                meta = {}
+        if template_id and meta.get("template_id") != template_id:
+            continue
+        content = getattr(msg, "content", "") or ""
+        docs.append(
+            {
+                "title": meta.get("title", "(untitled)"),
+                "template_id": meta.get("template_id", ""),
+                "template_name": meta.get("template_name", ""),
+                "preview": content[:200],
+                "mentioned_entities": [],
+            }
+        )
+    docs.sort(key=lambda d: d.get("title", ""))
+    return docs[skip : skip + limit]
+
+
+async def get_document_nams(title: str) -> dict[str, Any] | None:
+    client = get_client()
+    if client is None:
+        return None
+    session_id = f"docs-{settings.domain_id}"
+    try:
+        conversation = await client.short_term.get_conversation(session_id=session_id)
+        messages = getattr(conversation, "messages", []) or []
+    except Exception:
+        return None
+
+    for msg in messages:
+        meta = getattr(msg, "metadata", None) or {}
+        if not isinstance(meta, dict):
+            try:
+                meta = json.loads(meta)  # type: ignore[arg-type]
+            except Exception:
+                meta = {}
+        if meta.get("title") == title:
+            content = getattr(msg, "content", "") or ""
+            return {
+                "document": {
+                    "title": title,
+                    "content": content,
+                    "template_id": meta.get("template_id", ""),
+                    "template_name": meta.get("template_name", ""),
+                },
+                "mentioned_entities": [],
+            }
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Decision traces — NAMS reasoning API
+# ---------------------------------------------------------------------------
+
+
+async def list_traces_nams() -> list[dict[str, Any]]:
+    client = get_client()
+    if client is None:
+        return []
+    try:
+        traces = await client.reasoning.list_traces()
+    except Exception as e:
+        logger.info("list_traces_nams: list_traces failed: %s", e)
+        return []
+
+    results: list[dict[str, Any]] = []
+    for trace in traces:
+        trace_id = getattr(trace, "id", None) or getattr(trace, "trace_id", None)
+        if trace_id is None:
+            continue
+        try:
+            full = await client.reasoning.get_trace_with_steps(trace_id)
+        except Exception:
+            continue
+        if full is None:
+            continue
+        steps_raw = getattr(full, "steps", []) or []
+        steps = [
+            {
+                "step_number": idx + 1,
+                "thought": getattr(s, "thought", "") or "",
+                "action": getattr(s, "action", "") or "",
+                "observation": getattr(s, "observation", "") or "",
+            }
+            for idx, s in enumerate(steps_raw)
+        ]
+        results.append(
+            {
+                "id": str(trace_id),
+                "task": getattr(full, "task", "") or "",
+                "outcome": getattr(full, "outcome", "") or "",
+                "steps": steps,
+            }
+        )
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Entity expansion — NAMS get_entity inlines relationships
+# ---------------------------------------------------------------------------
+
+
+async def expand_node_nams(element_id: str) -> dict[str, Any]:
+    client = get_client()
+    if client is None:
+        return {"nodes": [], "relationships": []}
+    try:
+        entity = await client.long_term.get_entity(element_id)
+    except Exception as e:
+        logger.info("expand_node_nams: get_entity(%s) failed: %s", element_id, e)
+        return {"nodes": [], "relationships": []}
+
+    nodes = [_entity_to_node(entity)]
+    rels: list[dict[str, Any]] = []
+    inlined = getattr(entity, "relationships", None) or []
+    for rel in inlined:
+        target_id = getattr(rel, "target_id", None) or getattr(rel, "target", None)
+        if target_id is None:
+            continue
+        rels.append(
+            {
+                "elementId": getattr(rel, "id", "") or f"{element_id}-{target_id}",
+                "type": getattr(rel, "type", "RELATED_TO"),
+                "startNodeElementId": element_id,
+                "endNodeElementId": str(target_id),
+            }
+        )
+        try:
+            target = await client.long_term.get_entity(target_id)
+            nodes.append(_entity_to_node(target))
+        except Exception:
+            continue
+    return {"nodes": nodes, "relationships": rels}
+
+
+def _entity_to_node(entity: Any) -> dict[str, Any]:
+    entity_id = getattr(entity, "id", None) or getattr(entity, "entity_id", None) or ""
+    return {
+        "elementId": str(entity_id),
+        "labels": [getattr(entity, "type", "Entity") or "Entity"],
+        "name": getattr(entity, "name", "") or "",
+        "description": getattr(entity, "description", "") or "",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Schema visualization fallback
+# ---------------------------------------------------------------------------
+
+
+async def schema_visualization_nams() -> dict[str, Any]:
+    """Synthesize a schema view from NAMS list_entities (no relationships)."""
+    client = get_client()
+    if client is None:
+        return {"nodes": [], "relationships": []}
+    try:
+        entities = await client.long_term.search_entities(query="", limit=1000)
+    except Exception as e:
+        logger.info("schema_visualization_nams: search_entities failed: %s", e)
+        return {"nodes": [], "relationships": []}
+
+    by_type: dict[str, int] = {}
+    for ent in entities:
+        t = getattr(ent, "type", "Entity") or "Entity"
+        by_type[t] = by_type.get(t, 0) + 1
+
+    nodes = [
+        {
+            "elementId": f"schema-{label}",
+            "labels": [label],
+            "name": label,
+            "count": count,
+        }
+        for label, count in by_type.items()
+    ]
+    return {"nodes": nodes, "relationships": []}
+
+
+# ---------------------------------------------------------------------------
+# Entity detail
+# ---------------------------------------------------------------------------
+
+
+async def get_entity_detail_nams(name: str) -> dict[str, Any] | None:
+    client = get_client()
+    if client is None:
+        return None
+    try:
+        entity = await client.long_term.get_entity_by_name(name)
+    except Exception:
+        entity = None
+    if entity is None:
+        return None
+    entity_id = getattr(entity, "id", None) or getattr(entity, "entity_id", None)
+    inlined = getattr(entity, "relationships", None) or []
+    connections: list[dict[str, Any]] = []
+    for rel in inlined:
+        target_id = getattr(rel, "target_id", None) or getattr(rel, "target", None)
+        if target_id is None:
+            continue
+        try:
+            target = await client.long_term.get_entity(target_id)
+        except Exception:
+            continue
+        connections.append(
+            {
+                "name": getattr(target, "name", "") or "",
+                "labels": [getattr(target, "type", "Entity") or "Entity"],
+                "relationship": getattr(rel, "type", "RELATED_TO"),
+                "direction": "outgoing",
+            }
+        )
+    return {
+        "entity": {
+            "name": getattr(entity, "name", "") or "",
+            "_labels": [getattr(entity, "type", "Entity") or "Entity"],
+            "description": getattr(entity, "description", "") or "",
+            "_id": str(entity_id) if entity_id else "",
+        },
+        "connections": connections,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Search
+# ---------------------------------------------------------------------------
+
+
+async def search_entities_nams(
+    query: str, label: str | None, limit: int
+) -> list[dict[str, Any]]:
+    client = get_client()
+    if client is None:
+        return []
+    try:
+        entities = await client.long_term.search_entities(
+            query=query, entity_type=label, limit=limit
+        )
+    except Exception as e:
+        logger.info("search_entities_nams failed: %s", e)
+        return []
+    return [_entity_to_node(e) for e in entities]

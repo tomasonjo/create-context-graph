@@ -12,6 +12,20 @@ Built with [create-context-graph](https://github.com/neo4j-labs/create-context-g
 
 ## Quick Start
 
+{% if is_nams %}
+This project uses **Neo4j Agent Memory Service (NAMS)** — a hosted memory backend. Your `.env` file already contains your API key; the agent reads from and writes to NAMS as you chat with it.
+
+```bash
+# Install dependencies
+make install
+
+# Edit .env to set ANTHROPIC_API_KEY (required by {{ framework_display_name }})
+# Then start the application
+make start
+```
+
+> The graph starts **empty**. Talk to the agent in the chat UI and it will populate memory through use. Want a pre-populated demo with relationships and properties? Re-run the CLI with `--self-hosted --demo`.
+{% else %}
 ```bash
 # Install dependencies
 make install
@@ -35,13 +49,42 @@ make seed
 # Start the application
 make start
 ```
+{% endif %}
 
 - **Backend:** http://localhost:8000
 - **Frontend:** http://localhost:3000
-{% if neo4j_type == 'docker' or neo4j_type == 'local' %}
+{% if is_nams %}
+- **NAMS Dashboard:** https://memory.neo4jlabs.com
+{% elif neo4j_type == 'docker' or neo4j_type == 'local' %}
 - **Neo4j Browser:** http://localhost:7474
 {% elif neo4j_type == 'aura' %}
 - **Neo4j Aura Console:** https://console.neo4j.io
+{% endif %}
+
+{% if is_nams %}
+## Memory backend: NAMS
+
+Your project is wired to the hosted Neo4j Agent Memory Service. Memory state lives in the cloud and is shared across processes (web app and `make mcp-server` both read/write the same graph).
+
+**Known limitations on the NAMS write API (v0.4):**
+- **Relationships** between domain entities are not yet exposed by NAMS REST. The graph view will show entities but no edges until upstream support lands.
+- **Entity properties** beyond `name`, `type`, `description` are dropped by the REST API. Properties from the bundled demo data are serialized into the `description` field as a markdown block.
+- **Preferences and facts** are not exposed by NAMS REST. `auto_preferences` is forced off.
+- **GDS endpoints** (`/gds/*`) return 501 on NAMS.
+
+For the full relationship-rich demo experience, re-scaffold with `--self-hosted`.
+
+## Switching memory provider/model
+
+The memory layer accepts [LiteLLM-style](https://docs.litellm.ai/) provider strings via env vars:
+
+```bash
+# In .env
+MEMORY_LLM=anthropic/claude-haiku-4-5
+MEMORY_EMBEDDING=sentence-transformers/all-MiniLM-L6-v2
+```
+
+Native adapters are resolved first (Anthropic, OpenAI, Bedrock, Vertex AI, SentenceTransformers). Everything else (Ollama, Groq, Together, Mistral, …) routes through LiteLLM.
 {% endif %}
 
 ## Architecture

@@ -32,11 +32,12 @@ from create_context_graph.renderer import ProjectRenderer
 
 @pytest.fixture
 def generated_project(tmp_path):
-    """Scaffold a full project and return its path."""
+    """Scaffold a full project and return its path. Uses self-hosted bolt backend."""
     config = ProjectConfig(
         project_name="Deep Validation App",
         domain="financial-services",
         framework="pydanticai",
+        memory_backend="bolt",
         neo4j_uri="neo4j://localhost:7687",
         neo4j_username="neo4j",
         neo4j_password="testpass123",

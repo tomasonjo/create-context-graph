@@ -13,8 +13,11 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "neo4j>=5.20",
-    "neo4j-agent-memory[spacy,gliner]>=0.1.0",
-    "sentence-transformers>=2.0",
+{% if is_nams %}
+    "neo4j-agent-memory[litellm,sentence-transformers]>=0.4.0,<0.6.0",
+{% else %}
+    "neo4j-agent-memory[litellm,sentence-transformers,extraction,fuzzy]>=0.4.0,<0.6.0",
+{% endif %}
 {% for dep in framework_deps %}
     "{{ dep }}",
 {% endfor %}
