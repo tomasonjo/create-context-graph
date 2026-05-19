@@ -695,3 +695,130 @@ class TestAllFrameworksRender:
             assert pkg_name in pyproject, (
                 f"pyproject.toml for {framework} missing dependency '{pkg_name}'"
             )
+
+
+class TestFrameworkAgentNotStubFallback:
+    """Regression guard for the silent stub-fallback at ``renderer.py:430``.
+
+    Carried forward from the v0.11.0 langgraph bug where a Jinja error in the
+    framework's agent.py.j2 was swallowed by an over-broad ``except Exception``
+    and produced a 36-line stub (``backend/shared/agent_stub.py.j2``) with the
+    same name. Tests like ``test_framework_agent_compiles`` would pass on the
+    stub because it's valid Python — the only way to catch the regression is
+    to assert framework-specific *content* and the absence of the stub's
+    distinguishing phrase.
+
+    The renderer was also tightened to only catch ``TemplateNotFound`` (a real
+    missing-template case) and let Jinja syntax / undefined errors propagate,
+    so a future template breakage becomes a hard test failure instead of a
+    silent stub. Both halves of the fix need to be in place; this test catches
+    the *consequence* if the broad-except is ever re-introduced.
+    """
+
+    # Two distinctive markers per framework — at least one of which is a
+    # unique-to-that-framework symbol (import path, decorator, registry, etc.)
+    # that would NOT appear in the agent_stub.py.j2 fallback.
+    FRAMEWORK_SIGNATURES = {
+        "pydanticai": ["from pydantic_ai import", "@agent.tool"],
+        "claude-agent-sdk": ["import anthropic", "client.messages.stream"],
+        "openai-agents": ["from agents import", "Runner.run"],
+        "langgraph": ["from langgraph.prebuilt import create_react_agent", "ChatAnthropic"],
+        "crewai": ["from crewai import", "Crew("],
+        "strands": ["from strands import Agent", "stream_async"],
+        "google-adk": ["from google.adk", "FunctionTool"],
+        "anthropic-tools": ["TOOL_REGISTRY", "@register_tool"],
+    }
+
+    STUB_FINGERPRINT = "This is a stub implementation"
+
+    @pytest.mark.parametrize("framework", list(FRAMEWORK_SIGNATURES))
+    def test_rendered_agent_is_not_the_stub(self, framework, tmp_path):
+        """The framework template must render — not the stub fallback."""
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="StubGuard",
+            domain="financial-services",
+            framework=framework,
+        )
+        out = tmp_path / f"stub-guard-{framework}"
+        ProjectRenderer(config, load_domain(config.domain)).render(out)
+
+        source = (out / "backend" / "app" / "agent.py").read_text()
+        assert self.STUB_FINGERPRINT not in source, (
+            f"{framework} rendered the agent_stub fallback. "
+            "See renderer.py:430 — only TemplateNotFound should trigger it."
+        )
+        for marker in self.FRAMEWORK_SIGNATURES[framework]:
+            assert marker in source, (
+                f"{framework} agent missing distinctive marker '{marker}'. "
+                "Either the template silently fell back to the stub, or the "
+                "template was edited away from the framework's idiomatic API."
+            )
+
+    def test_stub_fallback_only_when_template_missing(self, tmp_path):
+        """Sanity: the stub is still reachable when the template genuinely
+        doesn't exist. Uses a monkey-patched fw_key to simulate an unmapped
+        framework (the kind of state a half-added new framework would be in).
+        """
+        from unittest.mock import patch
+
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="MissingTemplate",
+            domain="financial-services",
+            framework="pydanticai",  # any valid key — we'll patch resolution
+        )
+        out = tmp_path / "missing-template"
+        renderer = ProjectRenderer(config, load_domain(config.domain))
+
+        # Patch resolved_framework to a key with no template directory.
+        with patch.object(
+            type(config), "resolved_framework", "no-such-framework", create=True
+        ):
+            import warnings
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                renderer.render(out)
+                stub_warnings = [
+                    w for w in caught if "placeholder stub" in str(w.message)
+                ]
+                assert stub_warnings, "Missing template must warn loudly"
+
+        source = (out / "backend" / "app" / "agent.py").read_text()
+        assert self.STUB_FINGERPRINT in source
+
+    def test_template_error_propagates(self, tmp_path):
+        """Sanity: a Jinja error (not TemplateNotFound) must surface, NOT
+        silently degrade to the stub.
+
+        Uses a synthetic ``_render_template`` patch to inject an Undefined
+        error that mimics the kind of template bug that previously got
+        swallowed.
+        """
+        from unittest.mock import patch
+
+        from jinja2.exceptions import UndefinedError
+
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="ErrorPropagates",
+            domain="financial-services",
+            framework="pydanticai",
+        )
+        out = tmp_path / "error-propagates"
+        renderer = ProjectRenderer(config, load_domain(config.domain))
+
+        original = renderer._render_template
+
+        def fail_only_agent(template_name, output_path, ctx):
+            if "agents/pydanticai/agent.py.j2" in template_name:
+                raise UndefinedError("simulated template bug")
+            return original(template_name, output_path, ctx)
+
+        with patch.object(renderer, "_render_template", side_effect=fail_only_agent):
+            with pytest.raises(UndefinedError, match="simulated template bug"):
+                renderer.render(out)

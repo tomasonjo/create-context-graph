@@ -22,6 +22,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from jinja2 import Environment, PackageLoader
+from jinja2.exceptions import TemplateNotFound
 
 from create_context_graph.config import ProjectConfig
 from create_context_graph.ontology import (
@@ -425,13 +426,27 @@ class ProjectRenderer:
         (backend_dir / "app").mkdir(parents=True, exist_ok=True)
         (backend_dir / "app" / "__init__.py").write_text("")
 
-        # Framework-specific agent template
+        # Framework-specific agent template. Only fall back to the stub when
+        # the framework directory doesn't exist (e.g. a new framework key was
+        # added without a template). Template-rendering errors — Jinja syntax,
+        # undefined variables, missing context — must propagate so they don't
+        # silently degrade into a 36-line stub the way the v0.11.0 langgraph
+        # regression did.
         fw_key = self.config.resolved_framework.replace("-", "_")
         agent_template = f"backend/agents/{fw_key}/agent.py.j2"
         try:
             self._render_template(agent_template, backend_dir / "app" / "agent.py", ctx)
-        except Exception:
-            # Fallback: render a minimal agent stub
+        except TemplateNotFound:
+            # Genuine missing template — render the documented stub so the
+            # scaffold still boots, but make the situation discoverable.
+            import warnings
+
+            warnings.warn(
+                f"No agent template found at {agent_template}; "
+                "falling back to the placeholder stub. The scaffolded "
+                "backend/app/agent.py will need a real implementation.",
+                stacklevel=2,
+            )
             self._render_template(
                 "backend/shared/agent_stub.py.j2",
                 backend_dir / "app" / "agent.py",
