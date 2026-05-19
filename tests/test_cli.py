@@ -805,7 +805,8 @@ class TestClaudeCodeConnectorCLI:
         assert "claude_code_base_path" in config_py
 
     def test_claude_code_import_data_dict_access(self, runner, tmp_path):
-        """Generated import_data.py should use dict access, not attribute access."""
+        """Generated import_data.py should treat connector output as a dict
+        (NormalizedData is coerced via ``_normalized_to_dict``)."""
         out = tmp_path / "cc-dict"
         result = runner.invoke(main, [
             "cc-dict",
@@ -816,8 +817,10 @@ class TestClaudeCodeConnectorCLI:
         ])
         assert result.exit_code == 0, result.output
         import_data = (out / "backend" / "scripts" / "import_data.py").read_text()
-        assert 'data["entities"]' in import_data
+        # New shape: connector return is dict-coerced then accessed via .get
+        assert 'data.get("entities"' in import_data
         assert "data.entities" not in import_data
+        assert "_normalized_to_dict" in import_data
 
     def test_claude_code_connector_entity_types(self, runner, tmp_path):
         """Generated connector should extract all entity types including Decision/Preference."""

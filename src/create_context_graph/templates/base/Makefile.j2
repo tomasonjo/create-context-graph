@@ -131,13 +131,20 @@ mcp-server:  ## Start MCP server for Claude Desktop
 {% endif %}
 
 {% if saas_connectors %}
-# Fetch real data from connected services into data/fixtures.json
+# Fetch from connected services and ingest into the configured memory backend
+# (NAMS or self-hosted bolt). Idempotent: each connector tracks a watermark in
+# .context-graph/watermarks.json so re-runs only fetch deltas.
 import:
 	cd backend && uv run python scripts/import_data.py
 
-# Fetch real data and ingest it into Neo4j (schema + import + seed in one step)
-import-and-seed: import
-	cd backend && uv run python scripts/generate_data.py
+# Fetch only (no ingest). Writes data/fixtures.json for inspection.
+import-dry-run:
+	cd backend && uv run python scripts/import_data.py --dry-run
+
+# Drain .context-graph/deadletter.jsonl back through the writer. Use after an
+# outage / partial-failure import to re-attempt the failed records.
+import-retry:
+	cd backend && uv run python scripts/import_data.py --retry
 {% endif %}
 
 # Test
