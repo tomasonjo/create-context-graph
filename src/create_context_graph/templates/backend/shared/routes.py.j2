@@ -302,9 +302,14 @@ async def pagerank():
 
 @router.get("/documents")
 async def list_documents(template_id: str | None = None, skip: int = 0, limit: int = 50):
-    """List documents, optionally filtered by template type."""
+    """List documents; template filtering is only available on bolt."""
     _require_neo4j()
     if _is_nams():
+        if template_id:
+            raise HTTPException(
+                status_code=501,
+                detail="Document template filtering is not supported on the NAMS backend.",
+            )
         results = await list_documents_nams(template_id, skip, limit)
         return {"documents": results}
     if template_id:

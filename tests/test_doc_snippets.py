@@ -310,28 +310,45 @@ class TestEnvVariables:
         )
 
 
-class TestNamsRelationshipWorkaround:
-    """The bolt-first NAMS workaround must be discoverable in the docs."""
+class TestNamsRelationshipEncoding:
+    """Both the docs and the code must describe the ccg-edges encoding the
+    NAMS path uses in lieu of native relationships."""
 
-    def test_use_nams_doc_covers_relationship_seeding(self):
+    def test_use_nams_doc_covers_ccg_edges_encoding(self):
         doc = (DOCS_DIR / "how-to" / "use-nams.md").read_text()
-        # Section heading + both option labels + the agreed mitigation phrase.
+        # The encoding section heading + the literal fence marker + a
+        # readable example so users know what they're looking at.
         assert "Seeding a relationship-rich graph" in doc
-        assert "Option A" in doc and "Option B" in doc
-        # The recommended bolt-first flow should be explicit, including --demo.
+        assert "ccg-edges" in doc
+        # The self-hosted escape hatch must still be discoverable for users
+        # who need native edges today.
         assert "--self-hosted" in doc
         assert "--demo" in doc
-        # And the doc should call out the upstream tracking marker so the two
-        # references stay in sync when the API lands.
-        assert "TODO(nams-relationships)" in doc
 
-    def test_ingest_py_has_tracked_todo_marker(self):
+    def test_ingest_py_uses_ccg_edges_marker(self):
         ingest = (
             Path(__file__).resolve().parent.parent
             / "src"
             / "create_context_graph"
             / "ingest.py"
         ).read_text()
-        # The marker is the contract the docs reference — it tells future
-        # contributors where to plug in MemoryClient.add_relationship.
-        assert "TODO(nams-relationships)" in ingest
+        # The marker is the single seam future contributors swap when NAMS
+        # ships add_relationship; the contract test pins both consumers
+        # to its output.
+        assert "ccg-edges" in ingest
+        assert "_build_ccg_edges_block" in ingest
+
+    def test_scaffold_template_uses_ccg_edges_marker(self):
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "create_context_graph"
+            / "templates"
+            / "backend"
+            / "connectors"
+            / "import_data.py.j2"
+        ).read_text()
+        # The scaffolded path must use the same encoding so generated apps
+        # produce graph-identical output to the CLI ingest.
+        assert "ccg-edges" in template
+        assert "_build_ccg_edges_block" in template

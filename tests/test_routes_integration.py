@@ -277,20 +277,25 @@ class TestNamsRoutes:
             assert "nams" in body
             assert "neo4j" not in body  # bolt-only field
 
-    def test_documents_uses_short_term_messages(self, tmp_path):
+    def test_documents_uses_long_term_entities(self, tmp_path):
+        """Documents are now dual-tracked on NAMS — the /documents endpoint
+        reads from the long_term Document entity (queryable, matches bolt
+        graph shape) rather than short_term messages (which are extraction
+        fuel, not the source of truth)."""
         from fastapi.testclient import TestClient
 
         backend_dir = _scaffold(tmp_path, backend="nams")
         client = _fake_client()
-        client.short_term.get_conversation = AsyncMock(
-            return_value=SimpleNamespace(
-                messages=[
-                    SimpleNamespace(
-                        content="Discharge content",
-                        metadata={"title": "Discharge Note", "template_id": "discharge"},
-                    ),
-                ]
-            )
+        # The new adapter calls long_term.search_entities and filters to
+        # OBJECT-typed records whose description has a body.
+        client.long_term.search_entities = AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    name="Discharge Note",
+                    entity_type="OBJECT",
+                    description="Discharge content\n\n_pole_type: OBJECT_",
+                ),
+            ]
         )
         app, _, _ = _import_app(backend_dir, backend="nams", fake_client=client)
 
@@ -301,6 +306,18 @@ class TestNamsRoutes:
             assert "documents" in body
             assert len(body["documents"]) == 1
             assert body["documents"][0]["title"] == "Discharge Note"
+
+    def test_documents_rejects_template_filter_on_nams(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="nams")
+        client = _fake_client()
+        app, _, _ = _import_app(backend_dir, backend="nams", fake_client=client)
+
+        with TestClient(app) as tc:
+            r = tc.get("/api/documents?template_id=discharge")
+            assert r.status_code == 501
+            assert "not supported" in r.json()["detail"]
 
     def test_search_uses_long_term_search(self, tmp_path):
         from fastapi.testclient import TestClient

@@ -104,51 +104,49 @@ def _run(coro):
 # ---------------------------------------------------------------------------
 
 
+def _make_doc_entity(title: str, content: str = "doc body", entity_type: str = "OBJECT"):
+    """Synthesize what NAMS long_term.search_entities returns for a Document.
+
+    The new adapter looks at ``entity_type`` (filters to OBJECT/DOCUMENT) and
+    ``description`` (parses out the ccg-edges block + _pole_type marker).
+    """
+    description = f"{content}\n\n_pole_type: {entity_type}_"
+    return SimpleNamespace(name=title, entity_type=entity_type, description=description)
+
+
 class TestListDocuments:
-    def test_returns_documents_from_messages(self, nams_adapter):
+    def test_returns_documents_from_long_term_entities(self, nams_adapter):
         adapter, memory_mod = nams_adapter
-        messages = [
-            SimpleNamespace(
-                content="Discharge note content...",
-                metadata={"title": "Discharge — Alice", "template_id": "discharge",
-                          "template_name": "Discharge Note"},
-            ),
-            SimpleNamespace(
-                content="Lab results page 1...",
-                metadata={"title": "Labs — Bob", "template_id": "labs",
-                          "template_name": "Lab Report"},
-            ),
+        entities = [
+            _make_doc_entity("Discharge — Alice", "Discharge note content..."),
+            _make_doc_entity("Labs — Bob", "Lab results page 1..."),
         ]
         client = MagicMock()
-        client.short_term.get_conversation = AsyncMock(
-            return_value=SimpleNamespace(messages=messages)
-        )
+        client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
         result = _run(adapter.list_documents_nams(None, 0, 50))
         assert len(result) == 2
         titles = {d["title"] for d in result}
         assert titles == {"Discharge — Alice", "Labs — Bob"}
-        # preview truncated to 200 chars
         for d in result:
             assert len(d["preview"]) <= 200
 
-    def test_filters_by_template_id(self, nams_adapter):
+    def test_skips_typed_non_document_entities(self, nams_adapter):
+        """Person/Organization/etc. entities returned by the search should be
+        filtered out — only OBJECT-typed records are treated as documents."""
         adapter, memory_mod = nams_adapter
-        messages = [
-            SimpleNamespace(content="...", metadata={"title": "A", "template_id": "discharge"}),
-            SimpleNamespace(content="...", metadata={"title": "B", "template_id": "labs"}),
-            SimpleNamespace(content="...", metadata={"title": "C", "template_id": "discharge"}),
+        entities = [
+            _make_doc_entity("DocA", entity_type="OBJECT"),
+            _make_doc_entity("Dr. Smith", entity_type="PERSON"),
+            _make_doc_entity("Mercy General", entity_type="ORGANIZATION"),
         ]
         client = MagicMock()
-        client.short_term.get_conversation = AsyncMock(
-            return_value=SimpleNamespace(messages=messages)
-        )
+        client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
-        result = _run(adapter.list_documents_nams("discharge", 0, 50))
-        assert len(result) == 2
-        assert {d["title"] for d in result} == {"A", "C"}
+        result = _run(adapter.list_documents_nams(None, 0, 50))
+        assert {d["title"] for d in result} == {"DocA"}
 
     def test_returns_empty_when_client_is_none(self, nams_adapter):
         adapter, memory_mod = nams_adapter
@@ -159,26 +157,56 @@ class TestListDocuments:
     def test_returns_empty_when_client_errors(self, nams_adapter):
         adapter, memory_mod = nams_adapter
         client = MagicMock()
-        client.short_term.get_conversation = AsyncMock(side_effect=RuntimeError("oops"))
+        client.long_term.search_entities = AsyncMock(side_effect=RuntimeError("oops"))
         memory_mod._client = client
         result = _run(adapter.list_documents_nams(None, 0, 50))
         assert result == []
 
     def test_pagination_skip_and_limit(self, nams_adapter):
         adapter, memory_mod = nams_adapter
-        messages = [
-            SimpleNamespace(content=str(i), metadata={"title": f"Doc-{i:02d}"})
-            for i in range(10)
-        ]
+        entities = [_make_doc_entity(f"Doc-{i:02d}", content=str(i)) for i in range(10)]
         client = MagicMock()
-        client.short_term.get_conversation = AsyncMock(
-            return_value=SimpleNamespace(messages=messages)
-        )
+        client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
         page = _run(adapter.list_documents_nams(None, skip=3, limit=4))
         assert len(page) == 4
         assert [d["title"] for d in page] == ["Doc-03", "Doc-04", "Doc-05", "Doc-06"]
+
+    def test_strips_ccg_edges_block_from_preview(self, nams_adapter):
+        """The ccg-edges YAML block is an implementation detail; previews
+        shown in the document browser must not include it."""
+        adapter, memory_mod = nams_adapter
+        description = (
+            "Real document body about chest pain workup.\n\n"
+            "```ccg-edges\n- type: MENTIONS\n  target: Alice Park\n```\n\n"
+            "_pole_type: OBJECT_"
+        )
+        entity = SimpleNamespace(
+            name="ClinicalNote-1", entity_type="OBJECT", description=description,
+        )
+        client = MagicMock()
+        client.long_term.search_entities = AsyncMock(return_value=[entity])
+        memory_mod._client = client
+
+        result = _run(adapter.list_documents_nams(None, 0, 50))
+        assert len(result) == 1
+        assert "ccg-edges" not in result[0]["preview"]
+        assert "_pole_type" not in result[0]["preview"]
+        assert "chest pain" in result[0]["preview"]
+
+    def test_skips_blank_description_after_stripping_metadata(self, nams_adapter):
+        adapter, memory_mod = nams_adapter
+        entity = SimpleNamespace(
+            name="EmptyDoc",
+            entity_type="OBJECT",
+            description="```ccg-edges\n- type: MENTIONS\n  target: Alice\n```\n\n_pole_type: OBJECT_",
+        )
+        client = MagicMock()
+        client.long_term.search_entities = AsyncMock(return_value=[entity])
+        memory_mod._client = client
+
+        assert _run(adapter.list_documents_nams(None, 0, 50)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -189,14 +217,12 @@ class TestListDocuments:
 class TestGetDocument:
     def test_returns_full_content_by_title(self, nams_adapter):
         adapter, memory_mod = nams_adapter
-        messages = [
-            SimpleNamespace(content="content-A", metadata={"title": "DocA"}),
-            SimpleNamespace(content="content-B", metadata={"title": "DocB"}),
+        entities = [
+            _make_doc_entity("DocA", content="content-A"),
+            _make_doc_entity("DocB", content="content-B"),
         ]
         client = MagicMock()
-        client.short_term.get_conversation = AsyncMock(
-            return_value=SimpleNamespace(messages=messages)
-        )
+        client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
         result = _run(adapter.get_document_nams("DocB"))
@@ -207,11 +233,18 @@ class TestGetDocument:
     def test_returns_none_when_not_found(self, nams_adapter):
         adapter, memory_mod = nams_adapter
         client = MagicMock()
-        client.short_term.get_conversation = AsyncMock(
-            return_value=SimpleNamespace(messages=[])
-        )
+        client.long_term.search_entities = AsyncMock(return_value=[])
         memory_mod._client = client
         assert _run(adapter.get_document_nams("missing")) is None
+
+    def test_returns_none_when_content_is_blank_after_stripping_metadata(self, nams_adapter):
+        adapter, memory_mod = nams_adapter
+        entity = _make_doc_entity("DocB", content="")
+        client = MagicMock()
+        client.long_term.search_entities = AsyncMock(return_value=[entity])
+        memory_mod._client = client
+
+        assert _run(adapter.get_document_nams("DocB")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -430,18 +463,23 @@ class TestIngestFixturesNams:
         }
         _run(adapter.ingest_fixtures_nams(fixture, "healthcare"))
 
-        # 2 entities created (1 patient + 1 hospital)
-        assert client.long_term.add_entity.await_count == 2
-        # 1 document → 1 short-term message
+        # 2 typed entities + 1 dual-tracked Document entity = 3 add_entity calls
+        assert client.long_term.add_entity.await_count == 3
+        # 1 document → 1 short-term message (no body fields in this fixture)
         assert client.short_term.add_message.await_count == 1
         # 1 trace with 1 step
         assert client.reasoning.start_trace.await_count == 1
         assert client.reasoning.add_step.await_count == 1
         assert client.reasoning.complete_trace.await_count == 1
 
-        # Relationship skip is logged to stdout (not an exception)
-        captured = capsys.readouterr()
-        assert "Skipped 1 relationships" in captured.out
+        # Alice's outbound TREATED_AT edge must be encoded into her description
+        # as a ccg-edges block (NAMS REST has no add_relationship yet).
+        alice_call = next(
+            c for c in client.long_term.add_entity.await_args_list
+            if c.kwargs.get("name") == "Alice"
+        )
+        assert "```ccg-edges" in alice_call.kwargs["description"]
+        assert "TREATED_AT" in alice_call.kwargs["description"]
 
     def test_handles_missing_client_gracefully(self, nams_adapter, capsys):
         adapter, memory_mod = nams_adapter

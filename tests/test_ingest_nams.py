@@ -26,6 +26,7 @@ import pytest
 from create_context_graph.config import ProjectConfig
 from create_context_graph.ingest import (
     _get_pole_type,
+    _require_safe_cypher_identifier,
     _serialize_entity_to_description,
     ingest_data,
     reset_memory_store,
@@ -186,6 +187,15 @@ class TestSerializeEntityToDescription:
         assert "**None value**" not in desc
 
 
+class TestSafeCypherIdentifier:
+    def test_accepts_simple_identifier(self):
+        assert _require_safe_cypher_identifier("Patient_Record", "label") == "Patient_Record"
+
+    def test_rejects_punctuation(self):
+        with pytest.raises(ValueError, match="Unsafe Cypher label"):
+            _require_safe_cypher_identifier("Bad Label", "label")
+
+
 # ---------------------------------------------------------------------------
 # _ingest_with_nams (via the ingest_data entry point with patched client)
 # ---------------------------------------------------------------------------
@@ -204,14 +214,15 @@ class TestIngestDataDispatch:
         )
         ingest_data(fixture, healthcare_ontology, cfg)
 
-        # 3 entities total in the fixture (2 patients + 1 hospital)
-        assert fake_client.long_term.add_entity.await_count == 3
+        # 3 typed entities (2 patients + 1 hospital) + 1 dual-tracked
+        # Document entity = 4 add_entity calls total.
+        assert fake_client.long_term.add_entity.await_count == 4
         first_kwargs = fake_client.long_term.add_entity.await_args_list[0].kwargs
         assert first_kwargs["name"] == "Alice Park"
         assert first_kwargs["entity_type"] in {"PERSON", "ORGANIZATION", "LOCATION", "EVENT", "OBJECT"}
         assert "_pole_type:" in first_kwargs["description"]
 
-    def test_nams_path_skips_relationships(
+    def test_nams_path_encodes_relationships_as_ccg_edges(
         self, tmp_path, healthcare_ontology, fake_client, fake_nams_module, capsys
     ):
         fixture = _make_fixture_file(tmp_path)
@@ -222,12 +233,27 @@ class TestIngestDataDispatch:
             nams_api_key="sk-test",
         )
         ingest_data(fixture, healthcare_ontology, cfg)
-        captured = capsys.readouterr()
-        assert "relationships not persisted" in captured.out
 
-    def test_nams_path_stores_documents_as_messages(
+        # Alice has an outbound TREATED_AT edge in the fixture — her
+        # description must carry the encoded ccg-edges block.
+        alice_call = next(
+            c for c in fake_client.long_term.add_entity.await_args_list
+            if c.kwargs.get("name") == "Alice Park"
+        )
+        description = alice_call.kwargs["description"]
+        assert "```ccg-edges" in description
+        assert "type: TREATED_AT" in description
+        assert "target: Mercy General" in description
+
+        # The user-facing summary should report the encoding, not a skip.
+        captured = capsys.readouterr()
+        assert "ccg-edges" in captured.out
+
+    def test_nams_path_dual_tracks_documents(
         self, tmp_path, healthcare_ontology, fake_client, fake_nams_module
     ):
+        """Documents become BOTH a long_term entity (queryable) AND a
+        short_term message (extraction fuel for NAMS)."""
         fixture = _make_fixture_file(tmp_path)
         cfg = ProjectConfig(
             project_name="x",
@@ -237,11 +263,23 @@ class TestIngestDataDispatch:
         )
         ingest_data(fixture, healthcare_ontology, cfg)
 
+        # Document message side.
         assert fake_client.short_term.add_message.await_count == 1
-        kwargs = fake_client.short_term.add_message.await_args.kwargs
-        assert kwargs["role"] == "document"
-        assert kwargs["session_id"].startswith("docs-")
-        assert kwargs["metadata"]["title"] == "Discharge Note — Bob Singh"
+        msg_kwargs = fake_client.short_term.add_message.await_args.kwargs
+        assert msg_kwargs["role"] == "document"
+        assert msg_kwargs["session_id"].startswith("docs-")
+        assert msg_kwargs["metadata"]["title"] == "Discharge Note — Bob Singh"
+
+        # Document entity side.
+        doc_entity_call = next(
+            (c for c in fake_client.long_term.add_entity.await_args_list
+             if c.kwargs.get("name") == "Discharge Note — Bob Singh"),
+            None,
+        )
+        assert doc_entity_call is not None, (
+            "Document was not also written as a long_term entity — dual-tracking broken"
+        )
+        assert doc_entity_call.kwargs["entity_type"] == "OBJECT"
 
     def test_nams_path_creates_traces_via_reasoning_api(
         self, tmp_path, healthcare_ontology, fake_client, fake_nams_module
@@ -319,6 +357,31 @@ class TestIngestDataDispatch:
         assert bolt_client.reasoning.start_trace.await_count == 0
         # SHOULD have hit graph.execute_write (schema + rels + docs + traces)
         assert bolt_client.graph.execute_write.await_count > 0
+
+    def test_legacy_bolt_signature_still_dispatches(
+        self, tmp_path, healthcare_ontology, monkeypatch
+    ):
+        fixture = _make_fixture_file(tmp_path)
+        import create_context_graph.ingest as ingest_module
+
+        memory_client_ingest = AsyncMock()
+        monkeypatch.setattr(ingest_module, "_ingest_with_memory_client", memory_client_ingest)
+        monkeypatch.setitem(sys.modules, "neo4j_agent_memory", ModuleType("neo4j_agent_memory"))
+
+        ingest_data(
+            fixture,
+            healthcare_ontology,
+            "neo4j://legacy-host:7687",
+            "legacy-user",
+            "legacy-pass",
+        )
+
+        assert memory_client_ingest.await_count == 1
+        assert memory_client_ingest.await_args.args[2:] == (
+            "neo4j://legacy-host:7687",
+            "legacy-user",
+            "legacy-pass",
+        )
 
 
 # ---------------------------------------------------------------------------

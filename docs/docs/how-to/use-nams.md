@@ -76,54 +76,40 @@ The NAMS REST API exposes a narrower write surface than bolt Cypher. The CLI doe
 |---|---|---|
 | Entity create (`add_entity`) | ✅ name + type + description only — other properties dropped | ✅ full properties |
 | Entity properties | ⚠️ Serialized into `description` field as markdown | ✅ first-class on the node |
-| Relationships | ❌ Not yet exposed | ✅ Cypher MERGE |
+| Relationships | ⚠️ Encoded into source entity's `description` as a fenced `ccg-edges` YAML block (migrates to native edges when NAMS adds `add_relationship`) | ✅ Cypher MERGE |
 | Preferences / facts | ❌ Not yet exposed | ✅ `add_preference`, `add_fact` |
 | Decision traces | ✅ via `reasoning.start_trace` | ✅ via Cypher |
-| Documents | ✅ as `short_term.add_message(role="document")` | ✅ as `:Document` nodes |
+| Documents | ✅ dual-tracked: `long_term.add_entity(type=OBJECT)` + `short_term.add_message(role="document")` | ✅ as `:Document` nodes |
 | Schema DDL | ❌ NAMS owns schema | ✅ `CREATE CONSTRAINT` etc. |
 | GDS algorithms | ❌ 501 Not Implemented | ✅ |
 | Arbitrary Cypher writes | ❌ Read-only | ✅ |
 
-The frontend handles these gaps transparently — graph view shows entities without edges, document browser pulls from the `documents` session, decision trace panel reads via the NAMS reasoning API.
+The frontend handles these gaps transparently — the graph view shows entities and parses `ccg-edges` blocks out of descriptions to display edges, the document browser reads from long-term `Document` entities, and the decision trace panel reads via the NAMS reasoning API.
 
 ## Seeding a relationship-rich graph for a NAMS project
 
-NAMS doesn't yet expose relationship writes via its REST API, so `make seed` on a NAMS scaffold creates entities but skips edges. The graph view shows disconnected nodes.
+NAMS REST has no `add_relationship` endpoint yet, so on NAMS scaffolds the ingest pipeline encodes each entity's outbound edges into a fenced `ccg-edges` YAML block appended to its `description`:
 
-If you need the full POLE-typed graph with relationships — for instance, to demo `expand_node` from the chat or to run agent tools that traverse edges — there are two workarounds.
+```ccg-edges
+- type: TREATED_AT
+  target: Mercy General
+  target_label: Hospital
+```
 
-### Option A — Bolt for development, NAMS for production reads
+The graph view recognizes this marker and renders the edges. The agent reads them out of the entity description naturally. When NAMS gains `add_relationship`, a one-shot migration parses these blocks and replays them as native edges — no schema change.
 
-Most teams adopt this pattern:
+If you'd rather have native graph edges today (for `expand_node`, GDS algorithms, or arbitrary Cypher traversal), scaffold with `--self-hosted`:
 
-1. **Scaffold the development project with `--self-hosted`:**
-   ```bash
-   uvx create-context-graph my-app --domain healthcare \
-     --framework strands --self-hosted --demo
-   ```
-   The `--demo` flag triggers `--reset-database --demo-data --ingest`, which seeds the full 80-entity / 180-edge demo graph into your local Neo4j.
+```bash
+uvx create-context-graph my-app --domain healthcare \
+  --framework strands --self-hosted --demo
+```
 
-2. **Demo, develop, and validate against the bolt graph.** Agent tools, expand actions, and GDS algorithms all work.
-
-3. **Promote to NAMS for production by flipping `MEMORY_BACKEND` in `.env`:**
-   ```bash
-   MEMORY_BACKEND=nams
-   MEMORY_API_KEY=sk-nams-...
-   ```
-   On NAMS the agent will populate memory through conversation. Pre-existing relationships from the bolt seeding stay in the bolt database; NAMS starts fresh.
-
-### Option B — Dual-run during seeding only
-
-If you want NAMS in production but a relationship-rich starting state:
-
-1. Run `make seed` against bolt to seed the local graph.
-2. Migrate manually: extract entities + relationships from bolt and re-ingest into NAMS as graph-shaped descriptions (relationships flattened into the `description` field). The `--ingest` path already does the entity half; the relationship half requires a custom script today.
-
-This is operationally awkward — most users stick with Option A until NAMS adds `add_relationship` to the REST API.
+The `--demo` flag triggers `--reset-database --demo-data --ingest`, which seeds the full 80-entity / 180-edge demo graph into your local Neo4j via native Cypher MERGE — no `ccg-edges` encoding because bolt can write real edges. You can develop against the bolt graph and later promote to NAMS by flipping `MEMORY_BACKEND` in `.env`.
 
 ### When NAMS adds relationship writes
 
-The `ingest.py` module has a `# TODO(nams-relationships)` marker. When the upstream library ships `MemoryClient.add_relationship`, scaffolding with NAMS + `--demo` will produce the full graph without the bolt-first dance.
+Both `ingest.py` and the generated `import_data.py` emit relationships via the shared `ccg-edges` marker. When the upstream library ships `MemoryClient.add_relationship`, the encoding logic in `_build_ccg_edges_block` is the single seam to replace — both consumers update via the contract test in `tests/test_nams_ingest_parity.py`.
 
 ## Switching backends after scaffold
 

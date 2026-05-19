@@ -74,7 +74,9 @@ class TestProjectConfigNamsDefaults:
 
 
 class TestEntitySerializer:
-    """The B-partial port packs entity attributes into the description field."""
+    """Entity attributes are markdown-serialized into the description field
+    (NAMS REST only accepts {name, type, description}); relationships are
+    appended as a separate ccg-edges block by callers."""
 
     def test_basic_fields_render(self):
         out = _serialize_entity_to_description(

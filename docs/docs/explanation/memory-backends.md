@@ -37,20 +37,21 @@ But the two backends have **different operational profiles**, and each makes sen
 
 The most important asymmetry today is what NAMS REST **doesn't** expose. The library raises `NotSupportedError` on these:
 
-- `add_relationship(...)` — relationships between domain entities cannot be created.
+- `add_relationship(...)` — no REST endpoint yet for native edges between domain entities.
 - `add_preference(...)` / `add_fact(...)` — preferences and facts have no REST endpoints.
 - Arbitrary Cypher writes via `client.query.cypher(...)` — read-only on NAMS.
 - Schema DDL (`CREATE CONSTRAINT`, `CREATE INDEX`) — NAMS owns its schema.
 
-The CLI's NAMS ingest path **does best-effort B-partial port**:
+The CLI and the generated `import_data.py` use a hybrid write shape that captures everything connectors emit without losing structure:
 
-- **Entities** — uses `add_entity`. NAMS REST accepts only `{name, type, description}`; the CLI serializes other properties into the description field as markdown so the property pane stays useful.
-- **Documents** — stored as `short_term.add_message(role="document")`, with title in metadata.
-- **Decision traces** — via `reasoning.start_trace / add_step / complete_trace`.
-- **Relationships** — logged-skipped. The frontend's graph view shows entities without edges on NAMS.
-- **Preferences / facts** — `auto_preferences` is forced off on NAMS. `auto_extract` still runs but extracted relationships are silently dropped.
+- **Entities** — `add_entity`. NAMS REST accepts only `{name, type, description}`; both ingestors serialize other properties into `description` as markdown so the property pane stays useful.
+- **Relationships** — **encoded** into the source entity's `description` as a fenced ```ccg-edges``` YAML block (deterministic, distinctively marked). The frontend graph view parses these out and renders edges. A one-shot migration replays them as native edges when NAMS adds `add_relationship` — the seam is `_build_ccg_edges_block` in `ingest.py`.
+- **Documents** — **dual-tracked**: `long_term.add_entity(name=title, type=OBJECT)` so the doc is a queryable entity (matches the bolt `:Document` shape), plus `short_term.add_message(role="document")` so the NAMS extractor can mine the prose. The `/documents` endpoint reads from long_term entities; short-term entries are extraction fuel, not the source of truth.
+- **Entity bodies** — connectors declare a `BODY_FIELDS = {label: property}` map; the named body field is also fed through `add_message` so the extractor sees comment bodies, issue descriptions, etc. Pure-metadata entities (Person, Project, Label) skip this channel.
+- **Decision traces** — `reasoning.start_trace / add_step / complete_trace` (unchanged).
+- **Preferences / facts** — still unsupported on NAMS REST. `auto_preferences` is forced off on NAMS; `auto_extract` runs but extracted edges are dropped (the encoded `ccg-edges` block covers structured edges instead).
 
-These limits reflect the current state of NAMS REST (v0.4). They'll narrow over time as upstream adds endpoints.
+These limits reflect the current state of NAMS REST (v0.4) and will narrow as upstream adds endpoints. The contract test `tests/test_nams_ingest_parity.py` pins the CLI and the scaffolded importer to the same NAMS call sequence so the two paths can't drift.
 
 ## Choosing per-project
 
