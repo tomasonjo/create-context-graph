@@ -86,6 +86,7 @@ The CLI chooses one of two memory backends per project:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `--import-preview` | `flag` | `false` | Parse `--import-file` and print a summary (conversation counts, date range, sample titles) without scaffolding or ingesting. Useful as a sanity check before a long ingest of a multi-GB export. Requires `--import-type` and `--import-file`. |
 | `--import-type` | `choice` | -- | `claude-ai` or `chatgpt`. Must pair with `--import-file`. |
 | `--import-file` | `path` | -- | Path to chat export (`.zip`, `.json`, `.jsonl`). |
 | `--import-depth` | `choice` | `fast` | `fast` (messages) or `deep` (messages + tool call traces). |

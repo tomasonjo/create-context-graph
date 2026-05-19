@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.11.3 — Streaming for CrewAI/Strands + NAMS hardening (2026-05-19)
+
+Rolls up streaming chat for the last two non-streaming frameworks, a much better NAMS failure-mode UX (classified errors surfaced in `/health`, memory-backend auto-detection from `.env`), lighter NAMS dependencies, custom-domain robustness fixes, and silent-failure cleanup across all 8 agent templates.
+
+### New Features
+
+- **Streaming chat for CrewAI and Strands.** Both frameworks now implement `handle_message_stream()`, so the `/chat/stream` SSE endpoint streams text deltas as the model produces them — previously these two frameworks emitted tool events live but text only arrived at the end of the run. CrewAI subscribes to `LLMStreamChunkEvent` on the crew event bus; Strands iterates `agent.stream_async()`. Both include a 60s timeout, partial-text fallback assembly, and emit `entities_extracted` / `preferences_detected` events. This closes out the streaming matrix — all 8 frameworks now stream text.
+- **`--import-preview` CLI flag.** Parses a chat export file (`--import-file …` + `--import-type …`) and prints a sanity-check summary (entity counts, conversation date range, sample titles) without scaffolding or ingesting. Useful before committing to a long import of a 1 GB+ ChatGPT/Claude AI export. Implemented in `cli.py::_run_import_preview()`.
+- **NAMS error classification surfaced in `/health`.** New `_classify_memory_error()` in `memory.py.j2` buckets NAMS init failures into `auth` / `rate_limit` / `network` / `config` / `unknown`, with human-readable messages mapped per category (e.g. "NAMS authentication failed — verify MEMORY_API_KEY at https://memory.neo4jlabs.com"). The `/health` endpoint now returns `nams_error`, `nams_error_message`, `nams_error_detail`, and `nams_dashboard` so the frontend can show a useful diagnostic instead of a generic "memory unavailable". Exposed via `get_error_category()` / `get_error_message()` / `get_error_detail()` for the FastAPI startup banner.
+- **Memory-backend auto-detection from `.env`.** New `@model_validator` in `config.py.j2` reconciles `memory_backend` with the credentials actually present in `.env`: flips `nams → bolt` if `MEMORY_API_KEY` is blank but `NEO4J_URI` is set (and vice-versa), printing a warning. An explicit `MEMORY_BACKEND` env var still wins. Default Neo4j credentials in generated `.env` are now empty rather than baked-in placeholder passwords.
+- **Lighter NAMS dependency footprint.** Generated `pyproject.toml` for NAMS scaffolds drops the `sentence-transformers` extra (NAMS does embeddings server-side) — extras shrink from `[litellm,sentence-transformers]` to `[litellm]`. `_resolve_embedding_model()` short-circuits to `None` on NAMS so the generated venv no longer pulls `torch` for a backend that doesn't use local embeddings.
+
+### Bug Fixes
+
+- **Custom-domain renderer crash.** `_get_domains_path()` was imported inside a narrow `try:` scope in `renderer.py`, raising `UnboundLocalError` in the success path after partially writing `ontology.yaml`. Import hoisted to module scope.
+- **Custom-domain generation produced silently-truncated ontologies.** `custom_domain.py` now checks the LLM response `stop_reason` for truncation, validates with Pydantic, and asserts completeness (non-empty `system_prompt` / `visualization` / `agent_tools`) before accepting. Provides actionable retry messages and clearer errors when the Anthropic/OpenAI SDK isn't installed.
+- **Agent-template degradations across all 8 frameworks.** Jinja conditionals that checked `param.default` truthiness were rewritten to `param.default is defined`, and a silent fallback that swallowed Jinja syntax errors was removed so render failures now surface instead of degrading to stub code. Affects every framework template (`anthropic_tools`, `claude_agent_sdk`, `crewai`, `google_adk`, `langgraph`, `openai_agents`, `pydanticai`, `strands`).
+- **Partial streamed text discarded on agent errors.** Strands and CrewAI now accumulate emitted text deltas and return the partial response when a generator raises mid-stream, instead of throwing away accumulated output. Also drops a redundant `RuntimeError` branch from the memory error classifier.
+- **NAMS Docker builds crashed on `spacy download`.** The v0.11.2 fix for the generated `Makefile` is now mirrored in `Dockerfile.backend.j2` via `{% if not is_nams %}` — NAMS images no longer fail at build time on a download command for a package they don't depend on.
+- **Frontend "Ask about" button rendered on non-string entity names.** `ContextGraphView.tsx.j2` adds a `typeof === "string"` guard before reading `.properties.name`.
+- **E2E selector regex out of date.** `e2e/app.spec.ts.j2` regexes updated from `/try a demo scenario/i` to `/try these/i` to match the current welcome card label.
+
+### Documentation
+
+- **`docs/docs/how-to/use-nams.md` — new "Seeding a relationship-rich graph" section.** Documents NAMS's current lack of `add_relationship` REST support and shows two working patterns: (Option A) scaffold with `--self-hosted --demo` for the rich dev experience, flip `MEMORY_BACKEND=nams` for production reads; (Option B) seed bolt first then migrate. Includes a `TODO(nams-relationships)` pointer for the future server-side API.
+- **Generated README (`base/README.md.j2`)** — minor wording updates for the NAMS sign-up flow and the `--import-preview` workflow.
+
+### Internal / CI
+
+- **CodeQL `py/incomplete-url-substring-sanitization` cleanup.** Test assertions in `test_nams_adapter.py` switched from URL substring checks (`"memory.neo4jlabs.com" in env`) to full-URL or content-phrase matches.
+- **Frontend devDeps pinned (`package.json.j2`).** Added `@types/react-dom ^19.0.0`; `overrides` section pins `lodash ^4.17.24` and `postcss ^8.5.10` to dodge known vulnerable transitive versions.
+- **New test coverage:** ~600 new test lines spread across `test_nams_adapter.py` (NAMS error classification, backend auto-detection, Dockerfile spacy guard), `test_renderer.py` (template-degradation guards, custom-domain regression), `test_custom_domain.py` (truncation/completeness validation), `test_generated_project.py` (CrewAI/Strands streaming surface), `test_chat_import.py` (`--import-preview`), `test_cli.py`, `test_doc_snippets.py`, and `test_routes_integration.py`.
+
 ## v0.11.2 — Post-release stabilization + pre-release smoke-render target (2026-05-19)
 
 Rolls up three follow-up fixes surfaced by running v0.11.0/v0.11.1 end-to-end on a fresh machine, plus a durable safeguard against the same class of bugs.

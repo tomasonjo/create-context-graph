@@ -7,7 +7,32 @@ title: "What's New"
 
 Recent additions and changes to create-context-graph and its documentation.
 
-## v0.11.0 (Current) — NAMS by default + LiteLLM
+## v0.11.3 (Current) — Streaming for CrewAI/Strands + NAMS hardening
+
+This release brings the last two agent frameworks onto full text streaming (CrewAI and Strands now stream both text and tool events via SSE — previously they streamed tool events only), adds a classified error path for NAMS failures so the frontend can surface useful diagnostics, and ships memory-backend auto-detection so the CLI does the right thing when your `.env` credentials and `MEMORY_BACKEND` don't line up.
+
+### New Features
+
+- **All 8 frameworks now stream text** — CrewAI gains streaming via the `LLMStreamChunkEvent` event bus; Strands gains streaming via `agent.stream_async()`. Both still run synchronously in a worker thread, with thread-safe text and tool events streamed through the `CypherResultCollector`. See [Framework Comparison](/docs/reference/framework-comparison).
+- **`--import-preview` flag** — parse a Claude AI / ChatGPT export file and print a sanity-check summary (conversation count, date range, sample titles) without scaffolding or ingesting. Useful before committing to a multi-GB import. See [Import Chat History](/docs/tutorials/import-chat-history).
+- **Classified NAMS errors in `/health`** — when the memory layer fails to connect, `/health` now returns `nams_error` (one of `auth` / `rate_limit` / `network` / `config` / `unknown`), `nams_error_message` (human-readable), `nams_error_detail`, and `nams_dashboard` — so the frontend can show a useful diagnostic instead of a generic "memory unavailable".
+- **Memory-backend auto-detection** — the generated `config.py` reconciles `MEMORY_BACKEND` with the credentials actually present in `.env`: flips `nams → bolt` if `MEMORY_API_KEY` is blank but `NEO4J_URI` is set, and vice-versa, with a warning. An explicit `MEMORY_BACKEND` env var still wins.
+- **Lighter NAMS dependency footprint** — generated NAMS scaffolds no longer pull `sentence-transformers` (and therefore `torch`), since NAMS does embeddings server-side. The `neo4j-agent-memory` extras shrink from `[litellm,sentence-transformers]` to `[litellm]`.
+
+### Bug Fixes
+
+- Agent-template degradations fixed across all 8 frameworks (Jinja `param.default is defined` guards; silent render-failure fallback removed so scaffold errors surface instead of producing stub code).
+- Custom-domain generation now detects LLM-truncated ontologies via `stop_reason` and validates completeness (non-empty `system_prompt` / `visualization` / `agent_tools`) before writing.
+- Strands and CrewAI now return accumulated text deltas on streaming errors instead of discarding them.
+- NAMS Docker images no longer fail to build on the `spacy download` step (the spacy guard from v0.11.2's `Makefile` is now mirrored in `Dockerfile.backend`).
+
+### New Documentation
+
+- New **"Seeding a relationship-rich graph"** section in [Use NAMS](/docs/how-to/use-nams) — explains how to seed with `--self-hosted --demo` (which writes the full demo graph including relationships) and then flip `MEMORY_BACKEND=nams` once `add_relationship` lands in the NAMS REST API.
+
+---
+
+## v0.11.0 — NAMS by default + LiteLLM
 
 This release flips the default memory backend from self-hosted Neo4j to the hosted **Neo4j Agent Memory Service (NAMS)** and adds **LiteLLM** provider injection for the memory layer.
 
