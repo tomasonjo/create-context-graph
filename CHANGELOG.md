@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.13.1 — v0.13.0 feedback report triage (unreleased)
+
+Addresses the May 20, 2026 v0.13.0 feedback report. The report mixed verified issues with claims that don't match the current codebase; each claim was verified before scoping work. This release closes every real issue, makes the generated `app.models` module load-bearing, and adds regression tests so the v0.12.0/v0.13.0 fixes can't silently come back.
+
+### Bug Fixes
+
+- **`create-context-graph --dry-run` no longer demands a NAMS API key.** The non-interactive path validated `MEMORY_API_KEY` before reaching the `--dry-run` branch, so users couldn't preview a scaffold without first signing up. The credential gate is now scoped to non-dry-run flows; `--dry-run` skips it entirely. (`cli.py:392`)
+- **Dead `template_id` parameter removed from `list_documents_nams`.** The NAMS branch of `GET /documents` already raises HTTP 501 when `template_id` is supplied, so the parameter could never reach the function meaningfully. Signature is now `list_documents_nams(skip, limit)`. (`templates/backend/shared/memory_adapter.py.j2`, `templates/backend/shared/routes.py.j2`)
+- **DocumentBrowser entity badges use a stable composite key.** The mentioned-entities map was the last `key={\`${e.name}-${i}\`}` (index-tainted) site in the frontend; switched to `key={\`${selectedDoc.document.title}-${e.name}\`}` so badges don't collide when the user navigates back to the same document. (`templates/frontend/components/DocumentBrowser.tsx.j2`)
+
+### Code Quality
+
+- **Generated `models.py` uses `Field(...)` for required fields.** Previously, `generate_pydantic_models` emitted `name: str = ...` (bare Ellipsis literal). Valid Pydantic v2, but unfamiliar to contributors and harder to extend with constraints (`Field(..., min_length=1)`). Required fields now emit `name: str = Field(...)`. (`ontology.py:478`)
+- **New `GET /schema/models` endpoint wires `app.models` into the runtime.** Returns the JSON Schema for every Pydantic entity model generated from the domain ontology, useful for frontend codegen and OpenAPI clients. Makes the previously-unused `app.models` module load-bearing. (`templates/backend/shared/routes.py.j2`)
+
+### Testing
+
+- **`TestCompositeKeyRegressions`** (`tests/test_frontend_logic.py`) — five new assertions pin the composite-key patterns introduced in v0.13.0 (`ChatInterface` entity/preference/tool-call badges, `DecisionTracePanel` step keys) plus the new `DocumentBrowser` fix.
+- **`TestV0131ModelsPolish` and `TestV0131TemplateIdRemoval`** (`tests/test_generated_project.py`) — assert that the generated `models.py` uses `Field(...)` (and never bare `= ...`), that the `/schema/models` endpoint compiles, and that the `list_documents_nams` signature no longer takes `template_id`.
+- **Three new Playwright tests** (`templates/frontend/e2e/app.spec.ts.j2`) — watch the browser console for React duplicate-key warnings across a multi-prompt chat sequence, verify the decision trace step list renders without page errors, and verify the document browser entity badges render without page errors.
+
+### Not Changed (and why)
+
+The v0.13.0 feedback report flagged several issues that don't reflect the current code. Documenting here so contributors don't re-litigate:
+
+- **"Backend connectors removed from scaffolded projects" — false.** `templates/backend/connectors/` still exists and `renderer.py:474-514` renders connector modules + `backend/scripts/import_data.py` whenever `--connector` is supplied. Runtime `make import` / `make import-dry-run` / `make import-retry` targets continue to work on every scaffold.
+- **"`pyproject.toml.j2` bloats NAMS users with `sentence-transformers`" — false.** The template already branches on backend mode at lines 16-20: NAMS scaffolds pin `neo4j-agent-memory[litellm]`, self-hosted scaffolds pin `neo4j-agent-memory[litellm,sentence-transformers,extraction,fuzzy]`. NAMS users never pull PyTorch.
+- **"Restore media / insurance / supply-chain domains" — these never existed.** `git log --all -- src/create_context_graph/domains/*.yaml` shows no history for these labels. v0.13.0's "restored domains" are `legal`, `education`, `cybersecurity`, `government` — total domain count remains 27.
+- **"Unused `i` in `ContextGraphView` line 210" — leave as-is.** The unused index is in a fallback `extractNodesAndRels` parser, not a render hot path, and removing it would churn a path that hasn't drifted in months.
+
 ## v0.13.0 — v0.12.0 feedback report fixes (unreleased)
 
 Addresses the May 2026 v0.12.0 feedback report: one runtime bug on the `--self-hosted` ingest path, one React state bug in the streaming chat, four `key={i}` re-render hazards, dead/over-fetching code in the document adapter, four restored domains, and documentation for the `ccg-edges` encoding strategy.

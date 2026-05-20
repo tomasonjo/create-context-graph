@@ -125,7 +125,7 @@ class TestListDocuments:
         client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
-        result = _run(adapter.list_documents_nams(None, 0, 50))
+        result = _run(adapter.list_documents_nams(0, 50))
         assert len(result) == 2
         titles = {d["title"] for d in result}
         assert titles == {"Discharge — Alice", "Labs — Bob"}
@@ -145,13 +145,13 @@ class TestListDocuments:
         client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
-        result = _run(adapter.list_documents_nams(None, 0, 50))
+        result = _run(adapter.list_documents_nams(0, 50))
         assert {d["title"] for d in result} == {"DocA"}
 
     def test_returns_empty_when_client_is_none(self, nams_adapter):
         adapter, memory_mod = nams_adapter
         memory_mod._client = None
-        result = _run(adapter.list_documents_nams(None, 0, 50))
+        result = _run(adapter.list_documents_nams(0, 50))
         assert result == []
 
     def test_returns_empty_when_client_errors(self, nams_adapter):
@@ -159,7 +159,7 @@ class TestListDocuments:
         client = MagicMock()
         client.long_term.search_entities = AsyncMock(side_effect=RuntimeError("oops"))
         memory_mod._client = client
-        result = _run(adapter.list_documents_nams(None, 0, 50))
+        result = _run(adapter.list_documents_nams(0, 50))
         assert result == []
 
     def test_pagination_skip_and_limit(self, nams_adapter):
@@ -169,7 +169,7 @@ class TestListDocuments:
         client.long_term.search_entities = AsyncMock(return_value=entities)
         memory_mod._client = client
 
-        page = _run(adapter.list_documents_nams(None, skip=3, limit=4))
+        page = _run(adapter.list_documents_nams(skip=3, limit=4))
         assert len(page) == 4
         assert [d["title"] for d in page] == ["Doc-03", "Doc-04", "Doc-05", "Doc-06"]
 
@@ -189,7 +189,7 @@ class TestListDocuments:
         client.long_term.search_entities = AsyncMock(return_value=[entity])
         memory_mod._client = client
 
-        result = _run(adapter.list_documents_nams(None, 0, 50))
+        result = _run(adapter.list_documents_nams(0, 50))
         assert len(result) == 1
         assert "ccg-edges" not in result[0]["preview"]
         assert "_pole_type" not in result[0]["preview"]
@@ -206,7 +206,7 @@ class TestListDocuments:
         client.long_term.search_entities = AsyncMock(return_value=[entity])
         memory_mod._client = client
 
-        assert _run(adapter.list_documents_nams(None, 0, 50)) == []
+        assert _run(adapter.list_documents_nams(0, 50)) == []
 
 
 # ---------------------------------------------------------------------------

@@ -234,6 +234,27 @@ async def schema_visualization():
     return await get_schema_visualization()
 
 
+@router.get("/schema/models")
+async def list_entity_schemas():
+    """Return JSON Schema for each entity model generated from the domain ontology.
+
+    Useful for frontend codegen and OpenAPI clients. Discovers Pydantic models
+    by introspecting `app.models` at request time.
+    """
+    from pydantic import BaseModel
+
+    from app import models as entity_models
+
+    schemas: dict[str, dict] = {}
+    for attr_name in dir(entity_models):
+        if attr_name.startswith("_"):
+            continue
+        cls = getattr(entity_models, attr_name)
+        if isinstance(cls, type) and issubclass(cls, BaseModel) and cls is not BaseModel:
+            schemas[attr_name] = cls.model_json_schema()
+    return {"schemas": schemas}
+
+
 @router.post("/expand")
 async def expand(request: ExpandRequest):
     """Expand a node to show its immediate neighbors."""
@@ -310,7 +331,7 @@ async def list_documents(template_id: str | None = None, skip: int = 0, limit: i
                 status_code=501,
                 detail="Document template filtering is not supported on the NAMS backend.",
             )
-        results = await list_documents_nams(template_id, skip, limit)
+        results = await list_documents_nams(skip, limit)
         return {"documents": results}
     if template_id:
         cypher = """

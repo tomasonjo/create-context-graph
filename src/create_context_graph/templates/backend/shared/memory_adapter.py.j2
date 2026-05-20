@@ -245,7 +245,7 @@ def _document_record_from_entity(entity: Any) -> dict[str, Any] | None:
 
 
 async def list_documents_nams(
-    template_id: str | None, skip: int, limit: int
+    skip: int, limit: int
 ) -> list[dict[str, Any]]:
     client = get_client()
     if client is None:
@@ -275,9 +275,6 @@ async def list_documents_nams(
         # to OBJECT, but legacy data may use the older DOCUMENT label.
         if ent_type and ent_type.upper() not in {"OBJECT", "DOCUMENT"}:
             continue
-        # NAMS doesn't preserve template_id metadata yet; routes.py rejects
-        # template_id filters on NAMS with HTTP 501, so the field stays empty
-        # and we no longer attempt a filter that could never match.
         rec["template_id"] = ""
         rec["template_name"] = ""
         rec["mentioned_entities"] = []

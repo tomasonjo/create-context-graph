@@ -21,6 +21,7 @@ valid syntax, and expected content.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 import yaml
@@ -842,6 +843,113 @@ class TestHealthcareEnumCompilation:
         compile(source, "models.py", "exec")
         assert "A_PLUS" in source
         assert "A_MINUS" in source
+
+
+class TestV0131ModelsPolish:
+    """v0.13.1 — generated Pydantic models use ``Field(...)`` for required
+    fields (idiomatic Pydantic v2) instead of the bare ``...`` Ellipsis literal,
+    and the ``/schema/models`` endpoint exposes their JSON Schemas to make the
+    generated ``app.models`` module load-bearing rather than dead code."""
+
+    def test_required_fields_use_field_factory(self, tmp_path):
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="Field Polish Test",
+            domain="healthcare",
+            framework="pydanticai",
+        )
+        ontology = load_domain("healthcare")
+        out = tmp_path / "field-polish-test"
+        renderer = ProjectRenderer(config, ontology)
+        renderer.render(out)
+
+        models_src = (out / "backend" / "app" / "models.py").read_text()
+        # Idiomatic Pydantic v2: required fields use Field(...) so contributors
+        # can extend with constraints (Field(..., min_length=1)) without churning
+        # the whole declaration shape.
+        assert "Field(...)" in models_src
+        # The legacy bare ``= ...`` Ellipsis literal must be gone.
+        for line in models_src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or not stripped:
+                continue
+            # The only legitimate trailing ``= ...`` would be inside a Field()
+            # call (e.g. ``Field(..., description="x")``), which we already
+            # match above.  Match ``: <type> = ...`` field declarations.
+            assert not re.search(r":\s*[A-Za-z_][A-Za-z0-9_\[\]\| ]*\s*=\s*\.\.\.\s*$", stripped), (
+                f"Bare ``= ...`` field declaration found — should be ``= Field(...)``: {line!r}"
+            )
+
+    def test_schema_models_endpoint_present(self, tmp_path):
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="Schema Models Endpoint Test",
+            domain="healthcare",
+            framework="pydanticai",
+        )
+        ontology = load_domain("healthcare")
+        out = tmp_path / "schema-models-test"
+        renderer = ProjectRenderer(config, ontology)
+        renderer.render(out)
+
+        routes_src = (out / "backend" / "app" / "routes.py").read_text()
+        assert '@router.get("/schema/models")' in routes_src, (
+            "routes.py must expose /schema/models so the generated models.py is "
+            "load-bearing"
+        )
+        assert "from app import models as entity_models" in routes_src
+        assert "model_json_schema" in routes_src
+
+    def test_schema_models_endpoint_compiles(self, tmp_path):
+        """Compile-check the generated routes.py — catches Jinja2 escaping
+        regressions in the new endpoint."""
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="Routes Compile Test",
+            domain="healthcare",
+            framework="pydanticai",
+        )
+        ontology = load_domain("healthcare")
+        out = tmp_path / "routes-compile-test"
+        renderer = ProjectRenderer(config, ontology)
+        renderer.render(out)
+
+        routes_path = out / "backend" / "app" / "routes.py"
+        compile(routes_path.read_text(), "routes.py", "exec")
+
+
+class TestV0131TemplateIdRemoval:
+    """v0.13.1 — the dead ``template_id`` parameter on ``list_documents_nams``
+    is removed. NAMS routes already raise 501 if template filtering is
+    requested, so the parameter could never reach the function in a way
+    that mattered."""
+
+    def test_list_documents_nams_signature_has_no_template_id(self, tmp_path):
+        from create_context_graph.config import ProjectConfig
+
+        config = ProjectConfig(
+            project_name="Template ID Removal Test",
+            domain="healthcare",
+            framework="pydanticai",
+        )
+        ontology = load_domain("healthcare")
+        out = tmp_path / "template-id-removal-test"
+        renderer = ProjectRenderer(config, ontology)
+        renderer.render(out)
+
+        adapter_src = (out / "backend" / "app" / "memory_adapter.py").read_text()
+        # New signature.
+        assert "async def list_documents_nams(\n    skip: int, limit: int" in adapter_src
+        # Legacy signature must be gone.
+        assert "list_documents_nams(\n    template_id" not in adapter_src
+
+        routes_src = (out / "backend" / "app" / "routes.py").read_text()
+        # Call site updated.
+        assert "list_documents_nams(skip, limit)" in routes_src
+        assert "list_documents_nams(template_id" not in routes_src
 
 
 class TestGISCartographyEnumCompilation:

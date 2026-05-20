@@ -17,6 +17,8 @@ TEMPLATES_BASE = Path(__file__).resolve().parent.parent / "src" / "create_contex
 ROUTES_TEMPLATE = TEMPLATES_BASE / "backend" / "shared" / "routes.py.j2"
 CHAT_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "ChatInterface.tsx.j2"
 GRAPH_VIEW_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "ContextGraphView.tsx.j2"
+DOC_BROWSER_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "DocumentBrowser.tsx.j2"
+DECISION_TRACE_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "DecisionTracePanel.tsx.j2"
 
 
 # ---------------------------------------------------------------------------
@@ -470,4 +472,51 @@ class TestStreamingRefAccumulation:
         assert "loading" in deps, (
             f"externalInput useEffect must depend on `loading` to re-fire after a "
             f"mid-stream click; current deps: [{deps}]"
+        )
+
+
+class TestCompositeKeyRegressions:
+    """v0.13.0 / v0.13.1 — every list rendered from streaming data must use a
+    composite key derived from stable item properties. The pre-v0.13.0 bug was
+    bare ``key={i}`` (array index), which makes React reuse DOM across reorders
+    and stomp on the wrong message's content."""
+
+    def test_chat_interface_entity_badge_key_is_composite(self):
+        src = CHAT_TEMPLATE.read_text()
+        assert "key={`${e.type}-${e.name}-${i}`}" in src, (
+            "entity badge key must be `${e.type}-${e.name}-${i}` — index alone "
+            "is unsafe across re-renders"
+        )
+
+    def test_chat_interface_preference_badge_key_is_composite(self):
+        src = CHAT_TEMPLATE.read_text()
+        assert "key={`${p.category}-${p.preference}-${i}`}" in src, (
+            "preference badge key must be `${p.category}-${p.preference}-${i}`"
+        )
+
+    def test_chat_interface_tool_call_key_is_composite(self):
+        src = CHAT_TEMPLATE.read_text()
+        assert "key={`${tc.name}-${j}`}" in src, (
+            "tool call timeline key must be `${tc.name}-${j}`"
+        )
+
+    def test_decision_trace_step_key_is_composite(self):
+        src = DECISION_TRACE_TEMPLATE.read_text()
+        assert 'key={`step-${i}-${(step.action || "").slice(0, 32)}`}' in src, (
+            "trace step key must include the action prefix, not just the index"
+        )
+
+    def test_document_browser_entity_key_uses_document_title(self):
+        """v0.13.1 fix — the entity badge key in the document detail view used
+        to be `${e.name}-${i}`. That collides if the user navigates back to
+        the same document repeatedly (React reuses the prior badge nodes).
+        The fix scopes the key by the document title so it's unique across
+        document switches."""
+        src = DOC_BROWSER_TEMPLATE.read_text()
+        assert "key={`${selectedDoc.document.title}-${e.name}`}" in src, (
+            "DocumentBrowser entity badge key must include the document title"
+        )
+        # The old, weaker pattern must be gone.
+        assert "key={`${e.name}-${i}`}" not in src, (
+            "DocumentBrowser still uses the legacy index-tainted key"
         )

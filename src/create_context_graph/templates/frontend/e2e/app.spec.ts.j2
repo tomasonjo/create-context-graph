@@ -270,6 +270,81 @@ test.describe("{{ domain.name }} Context Graph", () => {
   });
 
   // --------------------------------------------------------------------------
+  // Regression tests for v0.12.0 / v0.13.0 frontend bug fixes
+  // --------------------------------------------------------------------------
+
+  test("composite keys do not trigger React duplicate-key warnings across renders", async ({ page }) => {
+    // Send a few prompts in sequence. React logs a console.error if entity,
+    // preference, or tool-call badges collide on a non-unique key — pre-v0.13.0
+    // they used `key={i}` (the array index), which would fire here.
+    const keyWarnings: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "warning" || msg.type() === "error") {
+        const text = msg.text();
+        if (
+          text.includes("Encountered two children with the same key") ||
+          text.includes("Each child in a list should have a unique") ||
+          text.includes("key prop")
+        ) {
+          keyWarnings.push(text);
+        }
+      }
+    });
+
+    const input = page.locator("textarea, input[type='text']").first();
+    if (await input.count() === 0) test.skip(true, "no chat input found");
+
+    for (const prompt of [
+      "Tell me about the data",
+      "What entities exist here?",
+      "Show me a summary of recent activity",
+    ]) {
+      await input.fill(prompt);
+      await page.keyboard.press("Enter");
+      // Allow streaming + tool-call badges to flush before sending the next.
+      await page.waitForTimeout(3000);
+    }
+    expect(keyWarnings).toEqual([]);
+  });
+
+  test("decision trace panel step list renders without runtime errors", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (err) => pageErrors.push(err.message));
+
+    const tracesTab = page.getByRole("tab", { name: /traces/i }).first();
+    if (await tracesTab.count() > 0) {
+      await tracesTab.click().catch(() => { /* may already be active */ });
+    }
+
+    const traceCards = page.locator("[role='button']").filter({ hasText: /step/i });
+    if (await traceCards.count() === 0) {
+      test.skip(true, "no demo traces — fixture may be empty");
+    }
+
+    await traceCards.first().click();
+    await page.waitForTimeout(500);
+    // No uncaught exceptions from rendering the step list.
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("document browser entity badges render without runtime errors", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (err) => pageErrors.push(err.message));
+
+    const docsTab = page.getByRole("tab", { name: /documents/i }).first();
+    if (await docsTab.count() > 0) await docsTab.click();
+
+    const firstDoc = page.locator("[role='button']").filter({ hasText: /\w+/ }).first();
+    if (await firstDoc.count() === 0) {
+      test.skip(true, "no demo documents — fixture may be empty");
+    }
+
+    await firstDoc.click({ trial: false });
+    await page.waitForTimeout(500);
+    expect(pageErrors).toEqual([]);
+  });
+
+  // --------------------------------------------------------------------------
   // API-level prompt quality checks
   // --------------------------------------------------------------------------
 {% for scenario in demo_scenarios %}

@@ -389,7 +389,9 @@ def main(
     # In non-interactive mode with default NAMS backend, --nams-api-key (or
     # MEMORY_API_KEY env) must be set unless --self-hosted is specified.
     if project_name and (domain or custom_domain) and (framework or DEFAULT_FRAMEWORK):
-        if memory_backend_resolved == "nams" and not nams_api_key:
+        # Skip the credential gate during --dry-run so users can preview a
+        # scaffold without first signing up for a NAMS API key.
+        if not dry_run and memory_backend_resolved == "nams" and not nams_api_key:
             console.print(
                 "[red]Error:[/red] NAMS API key required for non-interactive mode. "
                 "Pass --nams-api-key (or set MEMORY_API_KEY), or use --self-hosted for local Neo4j."
