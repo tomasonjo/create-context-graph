@@ -154,7 +154,12 @@ async def load_decision_traces(data: dict):
         # Create trace node
         try:
             await execute_cypher(
-                "MERGE (t:DecisionTrace {id: $id}) SET t.task = $task, t.outcome = $outcome, t.domain = $domain",
+                """
+                MERGE (t:DecisionTrace {id: $id})
+                ON CREATE SET t.started_at = datetime()
+                SET t.task = $task, t.outcome = $outcome, t.domain = $domain,
+                    t.completed_at = datetime()
+                """,
                 {
                     "id": trace.get("id", ""),
                     "task": trace.get("task", ""),
@@ -173,6 +178,7 @@ async def load_decision_traces(data: dict):
                     """
                     MATCH (t:DecisionTrace {id: $trace_id})
                     MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number})
+                    ON CREATE SET s.timestamp = datetime()
                     SET s.thought = $thought, s.action = $action, s.observation = $observation
                     MERGE (t)-[:HAS_STEP]->(s)
                     """,

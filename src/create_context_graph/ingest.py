@@ -174,7 +174,9 @@ async def _ingest_with_memory_client(
                 try:
                     await client.graph.execute_write(
                         "MERGE (t:DecisionTrace {id: $id}) "
-                        "SET t.task = $task, t.outcome = $outcome, t.domain = $domain",
+                        "ON CREATE SET t.started_at = datetime() "
+                        "SET t.task = $task, t.outcome = $outcome, t.domain = $domain, "
+                        "t.completed_at = datetime()",
                         {
                             "id": trace_data.get("id", ""),
                             "task": trace_data.get("task", ""),
@@ -186,6 +188,7 @@ async def _ingest_with_memory_client(
                         await client.graph.execute_write(
                             "MATCH (t:DecisionTrace {id: $trace_id}) "
                             "MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number}) "
+                            "ON CREATE SET s.timestamp = datetime() "
                             "SET s.thought = $thought, s.action = $action, s.observation = $observation "
                             "MERGE (t)-[:HAS_STEP]->(s)",
                             {
@@ -335,7 +338,9 @@ async def _ingest_with_driver(
                 try:
                     await session.run(
                         "MERGE (t:DecisionTrace {id: $id}) "
-                        "SET t.task = $task, t.outcome = $outcome, t.domain = $domain",
+                        "ON CREATE SET t.started_at = datetime() "
+                        "SET t.task = $task, t.outcome = $outcome, t.domain = $domain, "
+                        "t.completed_at = datetime()",
                         {
                             "id": trace_data.get("id", ""),
                             "task": trace_data.get("task", ""),
@@ -347,6 +352,7 @@ async def _ingest_with_driver(
                         await session.run(
                             "MATCH (t:DecisionTrace {id: $trace_id}) "
                             "MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number}) "
+                            "ON CREATE SET s.timestamp = datetime() "
                             "SET s.thought = $thought, s.action = $action, s.observation = $observation "
                             "MERGE (t)-[:HAS_STEP]->(s)",
                             {
