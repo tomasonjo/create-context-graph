@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Google Workspace connector — imports Drive files, comment threads (as decision
+"""Google Workspace connector — imports Drive files, comment threads (as reasoning
 traces), revisions, Drive Activity, Calendar events, and Gmail thread metadata
 into a unified knowledge graph.
 
 The defining feature is extracting resolved comment threads as first-class
-decision traces: the question, deliberation, resolution, and participants
+reasoning traces: the question, deliberation, resolution, and participants
 are all captured as graph-connected nodes.
 """
 
@@ -105,13 +105,13 @@ class GoogleWorkspaceConnector(BaseConnector):
     """Import Drive files, comment threads, revisions, activity, calendar,
     and Gmail thread metadata from Google Workspace.
 
-    Resolved comment threads are extracted as first-class decision traces
+    Resolved comment threads are extracted as first-class reasoning traces
     with participants, deliberation, and resolution.
     """
 
     service_name = "Google Workspace"
     service_description = (
-        "Import Drive files, comment threads (as decision traces), "
+        "Import Drive files, comment threads (as reasoning traces), "
         "revisions, activity, calendar, and Gmail"
     )
     requires_oauth = True
@@ -571,7 +571,7 @@ class GoogleWorkspaceConnector(BaseConnector):
             return []
 
     # ------------------------------------------------------------------
-    # Stage 2: Comment threads & decision traces
+    # Stage 2: Comment threads & reasoning traces
     # ------------------------------------------------------------------
 
     def _fetch_comments(
@@ -747,7 +747,7 @@ class GoogleWorkspaceConnector(BaseConnector):
                     "target_label": "Person",
                 })
 
-        # Extract decision trace (only for resolved threads)
+        # Extract reasoning trace (only for resolved threads)
         trace = self._extract_decision_trace(comment, file_name)
         if trace:
             traces.append(trace)
@@ -755,7 +755,7 @@ class GoogleWorkspaceConnector(BaseConnector):
     def _extract_decision_trace(
         self, comment: dict[str, Any], file_name: str,
     ) -> dict[str, Any] | None:
-        """Transform a resolved comment thread into a decision trace."""
+        """Transform a resolved comment thread into a reasoning trace."""
         if not comment.get("resolved"):
             return None
 

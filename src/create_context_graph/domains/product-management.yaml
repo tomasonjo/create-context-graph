@@ -257,7 +257,7 @@ document_templates:
       dependencies, and acceptance criteria.
     required_entities: [Feature, Epic, UserPersona]
 
-decision_traces:
+reasoning_traces:
   - id: feature_prioritization
     task: "Decide whether to prioritize {{feature.name}} for the upcoming sprint"
     steps:

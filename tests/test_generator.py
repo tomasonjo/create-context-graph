@@ -15,6 +15,7 @@
 """Unit tests for the generator module."""
 
 import json
+import uuid
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,7 @@ class TestGenerateFixtureData:
         assert "traces" in data
         assert len(data["traces"]) > 0
         trace = data["traces"][0]
+        uuid.UUID(trace["id"])
         assert "task" in trace
         assert "steps" in trace
         assert len(trace["steps"]) > 0
@@ -213,6 +215,12 @@ class TestShippedFixtureQuality:
             f"Most document titles should reference entities, not just sequential numbers: "
             f"{[d['title'] for d in documents[:5]]}"
         )
+
+    @pytest.mark.parametrize("fixture_data", _all_fixture_domain_ids(), indirect=True)
+    def test_trace_ids_are_uuids(self, fixture_data):
+        """Native neo4j-agent-memory reasoning traces require UUID IDs."""
+        for trace in fixture_data.get("traces", []):
+            uuid.UUID(trace["id"])
 
     @pytest.mark.parametrize("fixture_data", _all_fixture_domain_ids(), indirect=True)
     def test_traces_no_template_variables(self, fixture_data):

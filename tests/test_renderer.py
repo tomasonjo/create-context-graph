@@ -80,7 +80,7 @@ class TestProjectRenderer:
         assert (tmp_output / "frontend" / "app" / "globals.css").exists()
         assert (tmp_output / "frontend" / "components" / "ChatInterface.tsx").exists()
         assert (tmp_output / "frontend" / "components" / "ContextGraphView.tsx").exists()
-        assert (tmp_output / "frontend" / "components" / "DecisionTracePanel.tsx").exists()
+        assert (tmp_output / "frontend" / "components" / "ReasoningTracePanel.tsx").exists()
         assert (tmp_output / "frontend" / "components" / "Provider.tsx").exists()
         assert (tmp_output / "frontend" / "lib" / "config.ts").exists()
         assert (tmp_output / "frontend" / "theme" / "index.ts").exists()

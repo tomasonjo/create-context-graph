@@ -230,7 +230,7 @@ class ChatGPTConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def _extract_tool_trace(self, conv: Any) -> dict[str, Any] | None:
-        """Extract tool/code interpreter results as a decision trace."""
+        """Extract tool/code interpreter results as a reasoning trace."""
         steps: list[dict[str, str]] = []
         for msg in conv.messages:
             for tr in msg.tool_results:

@@ -266,7 +266,7 @@ document_templates:
       decisions needed from the client.
     required_entities: [Counsel, Person, Matter]
 
-decision_traces:
+reasoning_traces:
   - id: settlement_evaluation
     task: "Evaluate settlement offer for {{case.title}}"
     steps:

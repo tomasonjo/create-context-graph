@@ -5,26 +5,28 @@ import { Box, Heading, Text, VStack, HStack, Badge, Flex } from "@chakra-ui/reac
 import { GitBranch, Brain, Wrench, Eye } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
-interface TraceStep {
+interface ReasoningStep {
   step_number: number;
   thought: string;
   action: string;
   observation?: string;
 }
 
-interface DecisionTrace {
+interface ReasoningTrace {
   id: string;
   task: string;
-  steps: TraceStep[];
+  steps: ReasoningStep[];
   outcome: string;
 }
 
-export function DecisionTracePanel() {
-  const [traces, setTraces] = useState<DecisionTrace[]>([]);
-  const [selectedTrace, setSelectedTrace] = useState<DecisionTrace | null>(null);
+export function ReasoningTracePanel() {
+  const [traces, setTraces] = useState<ReasoningTrace[]>([]);
+  const [selectedTrace, setSelectedTrace] = useState<ReasoningTrace | null>(null);
 
   useEffect(() => {
     loadTraces();
+    const interval = window.setInterval(loadTraces, 5000);
+    return () => window.clearInterval(interval);
   }, []);
 
   async function loadTraces() {
@@ -36,7 +38,7 @@ export function DecisionTracePanel() {
           data.traces.map((t: Record<string, unknown>) => ({
             id: (t.id as string) || "",
             task: (t.task as string) || "",
-            steps: ((t.steps as TraceStep[]) || []).filter(
+            steps: ((t.steps as ReasoningStep[]) || []).filter(
               (s) => s && s.thought
             ),
             outcome: (t.outcome as string) || "",
@@ -54,7 +56,7 @@ export function DecisionTracePanel() {
         <Heading size="sm">
           <HStack>
             <GitBranch size={16} />
-            <span>Decision Traces</span>
+            <span>Reasoning Traces</span>
           </HStack>
         </Heading>
         <Text fontSize="xs" color="gray.500">
@@ -69,10 +71,10 @@ export function DecisionTracePanel() {
               <GitBranch size={32} color="#A0AEC0" />
             </Flex>
             <Text fontSize="sm" color="gray.500" textAlign="center">
-              No decision traces yet
+              No reasoning traces yet
             </Text>
             <Text fontSize="xs" color="gray.400" textAlign="center" mt={2} lineHeight="tall">
-              Decision traces capture multi-step reasoning chains — the thoughts,
+              Reasoning traces capture multi-step chains — the thoughts,
               actions, and observations an agent uses to reach a conclusion.
             </Text>
             <Box mt={3} textAlign="center">

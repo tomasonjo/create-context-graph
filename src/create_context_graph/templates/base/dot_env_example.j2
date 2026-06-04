@@ -38,7 +38,7 @@ MEMORY_EMBEDDING=
 ANTHROPIC_API_KEY=your-anthropic-key-here
 OPENAI_API_KEY=  # Optional: enables OpenAI embeddings for conversation memory (local sentence-transformers used by default)
 GOOGLE_API_KEY=your-google-api-key-here  # Required for google-adk framework
-# ANTHROPIC_MODEL=claude-sonnet-4-20250514  # Override default model for Claude Agent SDK
+# ANTHROPIC_MODEL=claude-sonnet-4-6  # Override default model for Claude Agent SDK
 
 # Application
 DOMAIN_ID={{ domain.id }}
@@ -85,7 +85,7 @@ LINEAR_API_KEY=your-linear-api-key-here  # From Linear Settings > Security & Acc
 LINEAR_TEAM=  # Optional: team key to filter import (e.g., ENG)
 {% endif %}
 {% if 'google-workspace' in saas_connectors %}
-# Google Workspace (decision trace import from Drive, Calendar, Gmail)
+# Google Workspace (reasoning trace import from Drive, Calendar, Gmail)
 GOOGLE_CLIENT_ID=your-client-id-here  # From Google Cloud Console > APIs & Services > Credentials
 GOOGLE_CLIENT_SECRET=your-client-secret-here
 GWS_FOLDER_ID=  # Optional: Drive folder ID to scope import (recommended)

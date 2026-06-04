@@ -25,7 +25,7 @@ NAMS write shape:
       the prose.
     * Entity records with a body field (declared per-connector via
       ``BODY_FIELDS = {label: property}``) also flow through ``add_message``.
-    * Decision traces use the reasoning REST API.
+    * Reasoning traces use the native reasoning API.
 
 This file is duplicated from ``src/create_context_graph/ingest.py``'s
 ``run_nams_ingest`` by design (see the create-context-graph CLAUDE.md
@@ -308,7 +308,7 @@ async def _ingest_via_nams(data: dict[str, Any], body_fields: dict[str, str]) ->
                     "title": title, "error": str(exc), "doc": doc,
                 })
 
-        # Decision traces
+        # Reasoning traces
         for trace in data.get("traces", []):
             try:
                 started = await client.reasoning.start_trace(
@@ -337,7 +337,7 @@ async def _ingest_via_nams(data: dict[str, Any], body_fields: dict[str, str]) ->
 
 
 # ---------------------------------------------------------------------------
-# Bolt write path — native edges via raw Cypher MERGE
+# Bolt write path — native graph edges plus native reasoning traces
 # ---------------------------------------------------------------------------
 
 
@@ -476,34 +476,49 @@ async def _ingest_via_bolt(data: dict[str, Any], body_fields: dict[str, str]) ->
                     "title": doc.get("title", ""), "error": str(exc), "doc": doc,
                 })
 
-        # Decision traces
-        for trace in data.get("traces", []):
-            try:
-                await session.run(
-                    "MERGE (t:DecisionTrace {id: $id}) "
-                    "SET t.task = $task, t.outcome = $outcome",
-                    {
-                        "id": trace.get("id", ""),
-                        "task": trace.get("task", ""),
-                        "outcome": trace.get("outcome", ""),
-                    },
-                )
-                for i, step in enumerate(trace.get("steps", [])):
-                    await session.run(
-                        "MATCH (t:DecisionTrace {id: $trace_id}) "
-                        "MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number}) "
-                        "SET s.thought = $thought, s.action = $action, s.observation = $observation "
-                        "MERGE (t)-[:HAS_STEP]->(s)",
-                        {
-                            "trace_id": trace.get("id", ""),
-                            "step_number": i + 1,
-                            "thought": step.get("thought", ""),
-                            "action": step.get("action", ""),
-                            "observation": step.get("observation", ""),
-                        },
-                    )
-                counts["traces"] += 1
-            except Exception as exc:  # noqa: BLE001
+    # Reasoning traces — native neo4j-agent-memory API.
+    traces = data.get("traces", [])
+    if traces:
+        try:
+            from neo4j_agent_memory import MemoryClient, MemorySettings
+            from pydantic import SecretStr
+
+            mem_settings = MemorySettings(
+                neo4j={
+                    "uri": settings.neo4j_uri,
+                    "username": settings.neo4j_username,
+                    "password": SecretStr(settings.neo4j_password),
+                }
+            )
+            async with MemoryClient(mem_settings) as client:
+                for trace in traces:
+                    try:
+                        started = await client.reasoning.start_trace(
+                            session_id="traces-import",
+                            task=trace.get("task", ""),
+                        )
+                        trace_id = getattr(started, "id", None) or trace.get("id", "")
+                        for step in trace.get("steps", []):
+                            await client.reasoning.add_step(
+                                trace_id=trace_id,
+                                thought=step.get("thought", ""),
+                                action=step.get("action", ""),
+                                observation=step.get("observation", ""),
+                            )
+                        await client.reasoning.complete_trace(
+                            trace_id=trace_id,
+                            outcome=trace.get("outcome", ""),
+                            success=True,
+                        )
+                        counts["traces"] += 1
+                    except Exception as exc:  # noqa: BLE001
+                        counts["failures"] += 1
+                        _append_deadletter({
+                            "ts": _now_utc_iso(), "kind": "trace",
+                            "id": trace.get("id", ""), "error": str(exc), "trace": trace,
+                        })
+        except Exception as exc:  # noqa: BLE001
+            for trace in traces:
                 counts["failures"] += 1
                 _append_deadletter({
                     "ts": _now_utc_iso(), "kind": "trace",

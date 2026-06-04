@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Heuristic decision trace extraction from Claude Code sessions.
+"""Heuristic reasoning trace extraction from Claude Code sessions.
 
 Identifies decision points in conversations using four signal types:
 
@@ -22,7 +22,7 @@ Identifies decision points in conversations using four signal types:
 4. **Dependency changes** — package install/remove commands.
 
 Each detected decision produces :Decision and :Alternative entities plus
-decision trace entries compatible with ``ingest.py``'s trace format.
+reasoning trace entries compatible with ``ingest.py``'s trace format.
 """
 
 from __future__ import annotations

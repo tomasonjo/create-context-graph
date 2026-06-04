@@ -236,7 +236,7 @@ document_templates:
       population trends, habitat changes, and lessons learned.
     required_entities: [Program, Species, Site, Funding]
 
-decision_traces:
+reasoning_traces:
   - id: species_intervention
     task: "Evaluate whether to escalate conservation intervention for {{species.common_name}} at {{site.name}}"
     steps:

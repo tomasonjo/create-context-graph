@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -44,7 +44,7 @@ import pytest
 #   - relationship with both source and target labels
 #   - relationship missing one or both labels (sanitizer must still pass)
 #   - document with all metadata fields
-#   - decision trace with multiple steps
+#   - reasoning trace with multiple steps
 # ---------------------------------------------------------------------------
 
 
@@ -124,6 +124,7 @@ class _RecordingDriver:
 
     def __init__(self):
         self.session_obj = _RecordingSession()
+        self.memory_client: _RecordingMemoryClient | None = None
         self.closed = False
         self.verified = False
 
@@ -152,13 +153,44 @@ class _RecordingDriver:
         return _Ctx()
 
 
+class _RecordingMemoryClient:
+    """``MemoryClient``-shaped double for native reasoning trace writes."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+        async def _start_trace(**kw):
+            self.calls.append(("reasoning.start_trace", dict(kw)))
+            return SimpleNamespace(id=f"trace-{len(self.calls)}")
+
+        async def _add_step(**kw):
+            self.calls.append(("reasoning.add_step", dict(kw)))
+            return SimpleNamespace(id=f"id-{len(self.calls)}")
+
+        async def _complete_trace(**kw):
+            self.calls.append(("reasoning.complete_trace", dict(kw)))
+            return SimpleNamespace(id=f"id-{len(self.calls)}")
+
+        self.reasoning = SimpleNamespace(
+            start_trace=AsyncMock(side_effect=_start_trace),
+            add_step=AsyncMock(side_effect=_add_step),
+            complete_trace=AsyncMock(side_effect=_complete_trace),
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Render the scaffolded template and exec its ``_ingest_via_bolt`` in a
 # sandbox so we can wire it to the recording driver.
 # ---------------------------------------------------------------------------
 
 
-def _exec_scaffold_template(driver: _RecordingDriver) -> dict[str, Any]:
+def _exec_scaffold_template(driver: _RecordingDriver, memory_client: _RecordingMemoryClient) -> dict[str, Any]:
     template_path = (
         Path(__file__).parent.parent
         / "src" / "create_context_graph" / "templates"
@@ -200,6 +232,11 @@ def _exec_scaffold_template(driver: _RecordingDriver) -> dict[str, Any]:
     fake_neo4j.AsyncGraphDatabase = _Factory
     sys.modules["neo4j"] = fake_neo4j
 
+    fake_nam = ModuleType("neo4j_agent_memory")
+    fake_nam.MemoryClient = MagicMock(return_value=memory_client)
+    fake_nam.MemorySettings = MagicMock()
+    sys.modules["neo4j_agent_memory"] = fake_nam
+
     import tempfile
     synthetic_root = Path(tempfile.gettempdir()) / "ccg_bolt_parity_test"
     (synthetic_root / "backend" / "scripts").mkdir(parents=True, exist_ok=True)
@@ -213,12 +250,14 @@ def _exec_scaffold_template(driver: _RecordingDriver) -> dict[str, Any]:
 
 def _run_bolt_path() -> tuple[_RecordingDriver, dict[str, int]]:
     driver = _RecordingDriver()
+    memory_client = _RecordingMemoryClient()
+    driver.memory_client = memory_client
     prior_modules = {
         name: sys.modules.get(name)
-        for name in ("app", "app.config", "app.connectors", "neo4j")
+        for name in ("app", "app.config", "app.connectors", "neo4j", "neo4j_agent_memory")
     }
     try:
-        ns = _exec_scaffold_template(driver)
+        ns = _exec_scaffold_template(driver, memory_client)
         ingest_via_bolt = ns["_ingest_via_bolt"]
 
         import tempfile
@@ -331,28 +370,27 @@ def test_document_call_shape(bolt_run):
 
 
 def test_trace_call_shape(bolt_run):
-    """One MERGE for the trace + one MERGE per step. The fixture's trace has
-    2 steps, so we expect exactly 3 trace-related calls in order."""
+    """Reasoning traces must go through neo4j-agent-memory, not custom Cypher."""
     driver, _ = bolt_run
-    trace_calls = [
-        (cy, params) for (cy, params) in driver.session_obj.calls
-        if "DecisionTrace" in cy or "TraceStep" in cy
+    assert all("DecisionTrace" not in cy and "TraceStep" not in cy for cy, _ in driver.session_obj.calls)
+    assert driver.memory_client is not None
+    calls = driver.memory_client.calls
+    assert [name for name, _ in calls] == [
+        "reasoning.start_trace",
+        "reasoning.add_step",
+        "reasoning.add_step",
+        "reasoning.complete_trace",
     ]
-    assert len(trace_calls) == 3, trace_calls
-    # First call creates the trace.
-    assert "MERGE (t:DecisionTrace" in trace_calls[0][0]
-    assert trace_calls[0][1]["id"] == "trace-alpha"
-    # Subsequent two create the steps in order.
-    assert trace_calls[1][1]["step_number"] == 1
-    assert trace_calls[2][1]["step_number"] == 2
-    # Each step references the parent trace id.
-    assert trace_calls[1][1]["trace_id"] == "trace-alpha"
-    assert trace_calls[2][1]["trace_id"] == "trace-alpha"
+    assert calls[0][1]["task"] == "Diagnose chest pain"
+    assert calls[1][1]["trace_id"] == "trace-1"
+    assert calls[2][1]["trace_id"] == "trace-1"
+    assert calls[3][1]["outcome"] == "Cardiology referral"
 
 
 def test_call_order(bolt_run):
-    """The bolt path writes in a fixed order: entities → relationships →
-    documents → traces. This ordering matters when a relationship MATCH
+    """The bolt path writes graph data in a fixed order: entities →
+    relationships → documents. Reasoning traces use MemoryClient after graph
+    writes. This ordering matters when a relationship MATCH
     needs the endpoints to exist already. Pin the order so a refactor
     can't silently move a write that breaks a downstream MERGE."""
     driver, _ = bolt_run
@@ -364,16 +402,12 @@ def test_call_order(bolt_run):
             order.append("relationship")
         elif "MERGE (d:Document" in cy:
             order.append("document")
-        elif "DecisionTrace" in cy or "TraceStep" in cy:
-            order.append("trace")
         else:
             order.append("other")
-    # First all entities, then all relationships, then docs, then traces.
+    # First all entities, then all relationships, then docs.
     first_rel = order.index("relationship")
     last_entity = max(i for i, x in enumerate(order) if x == "entity")
     assert last_entity < first_rel, order
     first_doc = order.index("document")
     last_rel = max(i for i, x in enumerate(order) if x == "relationship")
     assert last_rel < first_doc, order
-    first_trace = order.index("trace")
-    assert first_doc < first_trace, order

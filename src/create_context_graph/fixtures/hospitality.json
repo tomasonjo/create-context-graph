@@ -2067,7 +2067,7 @@
   ],
   "traces": [
     {
-      "id": "room_upgrade",
+      "id": "5aecb41b-3540-5560-9dca-75a3533df237",
       "task": "Decide whether to upgrade Marcus Johnson to a deluxe room",
       "steps": [
         {
@@ -2089,7 +2089,7 @@
       "outcome": "Approved the suite upgrade for Marcus Johnson given his strong loyalty status, anniversary celebration, and high guest satisfaction potential, with the revenue displacement justified by long-term relationship value."
     },
     {
-      "id": "rate_optimization",
+      "id": "f34fc0d0-0e33-591f-bef4-f8d3942e6efb",
       "task": "Optimize room rates for The Grand Palace Manhattan for the upcoming week",
       "steps": [
         {
@@ -2116,7 +2116,7 @@
       "outcome": "Implement dynamic pricing with base rates of $465 for standard rooms and $520 for suites, while maintaining rate parity across channels and offering limited-time 48-hour advance purchase discounts to capture remaining weekend inventory."
     },
     {
-      "id": "service_recovery",
+      "id": "9303748c-09c0-5f8b-8ec1-32b36b876542",
       "task": "Address service failure for Sarah Mitchell at South Beach Resort",
       "steps": [
         {

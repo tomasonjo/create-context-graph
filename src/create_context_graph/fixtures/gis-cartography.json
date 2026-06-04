@@ -2148,7 +2148,7 @@
   ],
   "traces": [
     {
-      "id": "data_source_selection",
+      "id": "cccfc006-4e95-51ac-a98f-a181f8a17474",
       "task": "Select the best data source for mapping Commercial Parcel 2024-15-A",
       "steps": [
         {
@@ -2175,7 +2175,7 @@
       "outcome": "Selected the 2023 ALTA survey as the primary data source supplemented by targeted field survey work for the eastern boundary updates, ensuring compliance with project accuracy specifications while minimizing field collection costs."
     },
     {
-      "id": "projection_selection",
+      "id": "81279f60-b4ac-55a9-82ed-8176d020248b",
       "task": "Determine the optimal map projection for Population Density Analysis",
       "steps": [
         {
@@ -2197,7 +2197,7 @@
       "outcome": "UTM Zone 11N (EPSG:26911) is selected as the optimal projection, providing good area preservation across the full project extent while maintaining acceptable distortion levels and offering standardized coordinates for cross-jurisdictional analysis."
     },
     {
-      "id": "boundary_dispute",
+      "id": "a978e582-4fde-5761-a8a6-33d9f1ee6ad8",
       "task": "Investigate boundary discrepancy between the relevant criteria and the relevant criteria",
       "steps": [
         {

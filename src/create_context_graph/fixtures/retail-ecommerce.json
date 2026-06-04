@@ -2107,7 +2107,7 @@
   ],
   "traces": [
     {
-      "id": "pricing_strategy",
+      "id": "a566e709-c784-5756-ac92-f66b42cc0a9c",
       "task": "Determine optimal pricing for UltraSound Wireless Headphones based on market data and customer behavior",
       "steps": [
         {
@@ -2134,7 +2134,7 @@
       "outcome": "Reduce price to $139.99 to optimize revenue velocity and clear excess inventory before restocking, as the 65% volume increase will offset the 6% margin reduction and improve competitive positioning against Sony's offering."
     },
     {
-      "id": "campaign_targeting",
+      "id": "0c6921a2-bcec-5e75-b527-0eeb9b0e3a5a",
       "task": "Select optimal customer segments for Beauty Product Social Media Push campaign",
       "steps": [
         {
@@ -2156,7 +2156,7 @@
       "outcome": "Recommend targeting Gen Z and Millennial segments with Instagram-focused campaign featuring video tutorials and influencer partnerships, projecting $2.8M revenue with optimal 6.2x ROI while maintaining manageable $450K budget."
     },
     {
-      "id": "product_recommendation",
+      "id": "70a03b99-84ec-531f-8169-492fbd9dc196",
       "task": "Generate personalized product recommendations for customer Priya Sharma",
       "steps": [
         {

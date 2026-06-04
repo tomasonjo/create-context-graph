@@ -2274,7 +2274,7 @@
   ],
   "traces": [
     {
-      "id": "feature_prioritization",
+      "id": "5463fabc-70ec-5705-822e-17328d3ff5e8",
       "task": "Decide whether to prioritize Automated Backup System for the upcoming sprint",
       "steps": [
         {
@@ -2301,7 +2301,7 @@
       "outcome": "Decision: Prioritize the Automated Backup System for the upcoming sprint given the strong user demand, clear business impact on retention and cost savings, and acceptable effort requirements. We'll coordinate closely with the Platform team on dependencies and plan for a phased rollout starting with premium users."
     },
     {
-      "id": "release_go_no_go",
+      "id": "7beb6404-ac27-586c-96d0-8f6df2e3e459",
       "task": "Determine if Critical Security Hotfix is ready to ship",
       "steps": [
         {
@@ -2323,7 +2323,7 @@
       "outcome": "Critical Security Hotfix approved for immediate production deployment with go-live scheduled for 2 AM EST maintenance window, given complete feature readiness, clean quality signals, and robust rollback preparedness."
     },
     {
-      "id": "persona_investment",
+      "id": "8dfc5758-1acd-544b-b0ae-ec7373676eb5",
       "task": "Determine investment level for Freelance Consultant persona in Qthe relevant criteria",
       "steps": [
         {

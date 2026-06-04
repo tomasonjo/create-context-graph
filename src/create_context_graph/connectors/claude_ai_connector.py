@@ -232,7 +232,7 @@ class ClaudeAIConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def _extract_tool_trace(self, conv: Any) -> dict[str, Any] | None:
-        """Extract tool call sequences as a decision trace (deep mode)."""
+        """Extract tool call sequences as a reasoning trace (deep mode)."""
         steps: list[dict[str, str]] = []
         for msg in conv.messages:
             for tc in msg.tool_calls:

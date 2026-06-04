@@ -129,8 +129,6 @@ async def load_documents(data: dict):
         MATCH (d:Document) WHERE d.domain = $domain
         MATCH (e) WHERE e.name IS NOT NULL
           AND NOT 'Document' IN labels(e)
-          AND NOT 'DecisionTrace' IN labels(e)
-          AND NOT 'TraceStep' IN labels(e)
           AND (e.domain IS NULL OR e.domain = $domain)
           AND d.content CONTAINS e.name
         MERGE (d)-[:MENTIONS]->(e)
@@ -143,51 +141,46 @@ async def load_documents(data: dict):
         print(f"  Warning linking documents: {e}")
 
 
-async def load_decision_traces(data: dict):
-    """Load decision traces with their reasoning steps."""
+async def load_reasoning_traces(data: dict):
+    """Load reasoning traces through neo4j-agent-memory."""
     traces = data.get("traces", [])
     if not traces:
-        print("  No decision traces to load")
+        print("  No reasoning traces to load")
         return
 
-    for trace in traces:
-        # Create trace node
+    from app.memory import get_client
+
+    client = get_client()
+    if client is None:
+        print("  [warn] Memory client not connected; skipping reasoning traces")
+        return
+
+    trace_count = 0
+    trace_session = f"traces-{settings.domain_id}"
+    for trace_data in traces:
         try:
-            await execute_cypher(
-                "MERGE (t:DecisionTrace {id: $id}) SET t.task = $task, t.outcome = $outcome, t.domain = $domain",
-                {
-                    "id": trace.get("id", ""),
-                    "task": trace.get("task", ""),
-                    "outcome": trace.get("outcome", ""),
-                    "domain": settings.domain_id,
-                },
+            trace = await client.reasoning.start_trace(
+                session_id=trace_session,
+                task=trace_data.get("task", ""),
             )
-        except Exception as e:
-            print(f"  Warning creating trace: {e}")
-            continue
-
-        # Create steps and link to trace
-        for i, step in enumerate(trace.get("steps", [])):
-            try:
-                await execute_cypher(
-                    """
-                    MATCH (t:DecisionTrace {id: $trace_id})
-                    MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number})
-                    SET s.thought = $thought, s.action = $action, s.observation = $observation
-                    MERGE (t)-[:HAS_STEP]->(s)
-                    """,
-                    {
-                        "trace_id": trace.get("id", ""),
-                        "step_number": i + 1,
-                        "thought": step.get("thought", ""),
-                        "action": step.get("action", ""),
-                        "observation": step.get("observation", ""),
-                    },
+            trace_id = getattr(trace, "id", None) or trace_data.get("id", "")
+            for step in trace_data.get("steps", []):
+                await client.reasoning.add_step(
+                    trace_id=trace_id,
+                    thought=step.get("thought", ""),
+                    action=step.get("action", ""),
+                    observation=step.get("observation", ""),
                 )
-            except Exception as e:
-                print(f"  Warning creating trace step: {e}")
+            await client.reasoning.complete_trace(
+                trace_id=trace_id,
+                outcome=trace_data.get("outcome", ""),
+                success=True,
+            )
+            trace_count += 1
+        except Exception as e:
+            print(f"  Warning creating reasoning trace: {e}")
 
-    print(f"  Created {len(traces)} DecisionTrace nodes with steps")
+    print(f"  Created {trace_count} reasoning traces")
 {% endraw %}
 
 async def main():
@@ -230,9 +223,9 @@ async def main():
     await load_documents(data)
 {% endraw %}
 
-    print("\n[4/4] Loading decision traces...")
+    print("\n[4/4] Loading reasoning traces...")
 {% raw %}
-    await load_decision_traces(data)
+    await load_reasoning_traces(data)
 
     await close_neo4j()
 {% endraw %}

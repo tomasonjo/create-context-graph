@@ -202,7 +202,7 @@ document_templates:
       {{organization.name}} regarding {{topic}}.
     required_entities: [Person, Organization]
 
-decision_traces:
+reasoning_traces:
   - id: trade_execution
     task: "Evaluate whether to execute a large block trade of {{security.name}} for client {{person.name}}"
     steps:

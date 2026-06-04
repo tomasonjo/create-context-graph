@@ -1395,7 +1395,7 @@
   ],
   "traces": [
     {
-      "id": "academic_intervention",
+      "id": "54c42d79-7193-52f9-abf6-a7f045fca2f4",
       "task": "Decide on academic intervention for Elena Volkov in Augusta National Golf Club",
       "steps": [
         {
@@ -1422,7 +1422,7 @@
       "outcome": "Intervention: the assessed criteria. Owner: the assessed criteria. Review date: the assessed criteria"
     },
     {
-      "id": "course_scheduling",
+      "id": "0f6d6ba6-4e60-5586-be5b-33642fb167b9",
       "task": "Schedule a new section of St Andrews Old Course for Q4 Strategy Review",
       "steps": [
         {
@@ -1444,7 +1444,7 @@
       "outcome": "Section: the assessed criteria. Instructor: the assessed criteria. Capacity: the assessed criteria"
     },
     {
-      "id": "grade_appeal",
+      "id": "36b7407f-c9cb-5c93-a162-a6227f2116cc",
       "task": "Evaluate grade appeal for James Morrison on Board of Directors Meeting",
       "steps": [
         {
@@ -1466,7 +1466,7 @@
       "outcome": "Decision: Approve. Original: the assessed criteria. Revised: the assessed criteria"
     },
     {
-      "id": "program_review",
+      "id": "6f8d2004-7b5d-5d5d-9b99-44889c301127",
       "task": "Review effectiveness of Augusta National Golf Club curriculum",
       "steps": [
         {

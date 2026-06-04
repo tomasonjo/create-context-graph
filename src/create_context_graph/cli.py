@@ -96,7 +96,7 @@ def _run_import_preview(
     console.print(f"\n  Conversations: {len(conversations)}")
     console.print(f"  Messages:      {len(messages)}")
     console.print(f"  Documents:     {len(data.documents)}")
-    console.print(f"  Decision traces: {len(data.traces)}")
+    console.print(f"  Reasoning traces: {len(data.traces)}")
     console.print(f"  Total entities:  {total_entities}")
     if entity_counts:
         console.print("  By label:")

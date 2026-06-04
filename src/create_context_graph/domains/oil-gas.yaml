@@ -258,7 +258,7 @@ document_templates:
       test results, and next service recommendation.
     required_entities: [Equipment, Well, Person]
 
-decision_traces:
+reasoning_traces:
   - id: drilling_decision
     task: "Evaluate whether to drill a new well in {{formation.name}} formation at proposed location"
     steps:

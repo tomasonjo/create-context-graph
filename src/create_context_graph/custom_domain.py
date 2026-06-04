@@ -120,14 +120,14 @@ document_templates:
     prompt_template: <prompt for LLM to generate a sample document>
     required_entities: [<EntityLabel>, ...]
 
-decision_traces:
+reasoning_traces:
   - id: <kebab-case>
-    task: <description of the decision task>
+    task: <description of the reasoning task>
     steps:
       - thought: <reasoning step>
         action: <action taken>
         observation: <result observed>
-    outcome_template: <template for the decision outcome>
+    outcome_template: <template for the reasoning outcome>
 
 demo_scenarios:
   - name: <scenario name>

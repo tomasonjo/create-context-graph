@@ -248,7 +248,7 @@ document_templates:
       and map outputs.
     required_entities: [Feature, Boundary, Layer, MapProject]
 
-decision_traces:
+reasoning_traces:
   - id: data_source_selection
     task: "Select the best data source for mapping {{boundary.name}}"
     steps:

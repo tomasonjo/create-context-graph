@@ -1978,7 +1978,7 @@
   ],
   "traces": [
     {
-      "id": "balance_adjustment",
+      "id": "ddc4a05f-6bbf-5ad9-b14b-ba4a4e3d498d",
       "task": "Evaluate whether healer class needs balance adjustment",
       "steps": [
         {
@@ -2005,7 +2005,7 @@
       "outcome": "The Necromancer class requires immediate balance adjustments including a 15% base health increase and Death Nova cooldown reduction to address underperformance and improve player satisfaction without disrupting overall game balance."
     },
     {
-      "id": "economy_intervention",
+      "id": "6ed1cd4e-cccf-5065-8766-2ba822a47205",
       "task": "Determine if gold inflation requires market intervention",
       "steps": [
         {
@@ -2027,7 +2027,7 @@
       "outcome": "Market intervention is required - implement a temporary 25% increase in gold sink effectiveness and introduce new high-value cosmetic items to absorb excess currency while protecting new player progression."
     },
     {
-      "id": "event_design",
+      "id": "0a5b290d-4697-5350-bd62-5f5535ae43f5",
       "task": "Design a limited-time event for player engagement boost",
       "steps": [
         {

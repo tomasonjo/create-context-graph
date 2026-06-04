@@ -806,7 +806,7 @@
   ],
   "traces": [
     {
-      "id": "trade_entry",
+      "id": "203ac5fb-6f48-5bea-95cc-080d79030f00",
       "task": "Evaluate 0DTE trade entry on SPX given current dealer positioning and the Post-FOMC Positive Gamma regime",
       "steps": [
         {
@@ -833,7 +833,7 @@
       "outcome": "Entry decision: Approve. Strategy: 0DTE Gamma Scalp. Contract: SPX 5800C 0DTE at 24.80. Quantity: 5. Max risk: $500."
     },
     {
-      "id": "regime_flip_response",
+      "id": "f3f3dc61-05b0-5353-90f8-47d67bca0e9a",
       "task": "Respond to gamma regime flip from Neutral Regime to Post-FOMC Positive Gamma on SPX",
       "steps": [
         {
@@ -855,7 +855,7 @@
       "outcome": "Action: hold SPX 5800C Scalp Long; consider adding 1-2 more contracts. Positions adjusted: none. New exposure: +5 delta-adjusted SPX calls."
     },
     {
-      "id": "level_breach_analysis",
+      "id": "76d69c3c-c6db-5e46-abbd-06c13c851f7c",
       "task": "Analyze breach of SPX Put Wall 5700 at $5700 on S&P 500 Index",
       "steps": [
         {
@@ -877,7 +877,7 @@
       "outcome": "Breach status: not breached (spot 5820.50, wall 5700). Next target on breach: below 5700 would expose dealers to negative gamma. Dealer flow: currently long gamma at 5800."
     },
     {
-      "id": "expiration_analysis",
+      "id": "816060f0-05b9-555c-b262-fc2eddb34e46",
       "task": "Analyze 0DTE options expiration impact for SPX with SPX 5800C 0DTE contracts expiring 2026-03-28",
       "steps": [
         {
@@ -899,7 +899,7 @@
       "outcome": "Max pain: $5800 SPX. Pin probability: moderate-to-high given Post-FOMC Positive Gamma. GEX removal: -720.4 at SPX 5800 post-expiry."
     },
     {
-      "id": "event_positioning",
+      "id": "ca0dc84b-9002-5e30-aa4e-c5ba6f5db09b",
       "task": "Position for upcoming FOMC Rate Decision Jan 2026 impact on S&P 500 Index",
       "steps": [
         {
@@ -921,7 +921,7 @@
       "outcome": "Strategy: 0DTE Gamma Scalp on SPX 5800C 0DTE. IV edge: vol crush realized, premium cheap. Position: 5x long SPX 5800C."
     },
     {
-      "id": "vix_spike_response",
+      "id": "beccac2e-107e-58fe-95ad-c7646999576a",
       "task": "Assess impact of a VIX spike on current 0DTE positions including SPX 5800C Scalp Long and QQQ 500C Gamma Scalp",
       "steps": [
         {
@@ -943,7 +943,7 @@
       "outcome": "VIX impact: limited. Vega P&L: +$22.76 per 1 vol point. Action: hold both SPX 5800C Scalp Long and QQQ 500C Gamma Scalp."
     },
     {
-      "id": "end_of_day_review",
+      "id": "0c6dbff3-11c7-5ed3-a8a2-e438731b1ef7",
       "task": "End-of-day review of 0DTE trading performance on 2026-03-28 across SPX, QQQ, and AAPL",
       "steps": [
         {
@@ -965,7 +965,7 @@
       "outcome": "Net P&L: $485 on 2026-03-28. Win rate: 100% (2/2). Best setup: 0DTE Gamma Scalp on SPX 5800C 0DTE."
     },
     {
-      "id": "spread_construction",
+      "id": "7c6ae8c1-3e49-56bd-839e-a2fad782f28c",
       "task": "Construct optimal put wall bounce call spread on SPY at current levels (spot 582.05)",
       "steps": [
         {
@@ -987,7 +987,7 @@
       "outcome": "Spread: SPY 580/585 call debit spread. Credit: n/a (debit 1.70). Max risk: $170. Probability: ~55% based on Put Wall Bounce win rate 0.71."
     },
     {
-      "id": "gamma_scalp_setup",
+      "id": "2beb48b2-62be-5a83-80e7-ce8752f81eba",
       "task": "Identify gamma scalp opportunity on QQQ in the Post-FOMC Positive Gamma regime",
       "steps": [
         {

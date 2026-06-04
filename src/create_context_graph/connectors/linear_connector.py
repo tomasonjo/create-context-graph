@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Linear connector — imports issues, projects, cycles, teams, users,
-relations, history (as decision traces), comments, milestones, initiatives,
+relations, history (as reasoning traces), comments, milestones, initiatives,
 attachments, and Linear Docs."""
 
 from __future__ import annotations
@@ -782,7 +782,7 @@ class LinearConnector(BaseConnector):
                         identifier, MAX_COMMENTS_PER_ISSUE,
                     )
 
-                # ---- Issue History → Decision Traces (P0) ----
+                # ---- Issue History → Reasoning Traces (P0) ----
                 history_connection = issue.get("history") or {}
                 history = history_connection.get("nodes", [])
                 if len(history) >= 2:
@@ -820,7 +820,7 @@ class LinearConnector(BaseConnector):
                 history_page_info = history_connection.get("pageInfo") or {}
                 if history_page_info.get("hasNextPage"):
                     logger.warning(
-                        "Issue %s has more than %d history entries; decision trace may be incomplete",
+                        "Issue %s has more than %d history entries; reasoning trace may be incomplete",
                         identifier, MAX_HISTORY_PER_ISSUE,
                     )
 

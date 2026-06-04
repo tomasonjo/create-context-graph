@@ -2295,7 +2295,7 @@
   ],
   "traces": [
     {
-      "id": "deploy_decision",
+      "id": "a37a4013-43e5-5274-aad1-64be3f42011d",
       "task": "Decide whether to deploy the relevant criteria to production on a Friday afternoon",
       "steps": [
         {
@@ -2322,7 +2322,7 @@
       "outcome": "Decision: Do not deploy to production. The combination of significant authentication service changes, non-reversible database migrations, limited weekend support availability, and upcoming high-traffic campaign creates too much risk for a Friday afternoon deployment."
     },
     {
-      "id": "incident_response",
+      "id": "2e2cb7c4-8148-5cc1-8f45-6eb413411a49",
       "task": "Respond to sev3 incident affecting user-authentication",
       "steps": [
         {
@@ -2344,7 +2344,7 @@
       "outcome": "Initiated immediate rollback to auth-service v2.3.0 to restore service within 15 minutes, followed by scheduling a hotfix deployment with proper connection pool configuration for the next maintenance window."
     },
     {
-      "id": "tech_debt_prioritization",
+      "id": "44ce8574-6b87-5750-8aad-81288bc45bca",
       "task": "Prioritize tech debt items for next quarter",
       "steps": [
         {

@@ -1970,7 +1970,7 @@
   ],
   "traces": [
     {
-      "id": "model_promotion",
+      "id": "fde7ee92-4c4a-5dbe-9aa9-d1b2b7668dcc",
       "task": "Decide whether to promote model InstructBot-7B from staging to production",
       "steps": [
         {
@@ -1997,7 +1997,7 @@
       "outcome": "Promotion to production is delayed pending resolution of bias mitigation strategies and completion of monitoring alert coverage; model will remain in staging for additional safety fine-tuning and infrastructure optimization."
     },
     {
-      "id": "experiment_direction",
+      "id": "49faaa45-b3b6-506e-a59f-161ca14ef4bb",
       "task": "Determine next experiment direction after Few-Shot Learning Evaluation results",
       "steps": [
         {
@@ -2019,7 +2019,7 @@
       "outcome": "Next experiment will focus on implementing Chain-of-Thought prompting with 8K context windows on mathematical reasoning datasets (GSM8K, MATH) and multilingual classification tasks, while developing a semantic similarity-based example selection mechanism to replace random sampling."
     },
     {
-      "id": "prompt_optimization",
+      "id": "97c43a4c-53ba-5afe-8c60-d8815f08cc71",
       "task": "Optimize prompt Creative Writing Assistant for improved the relevant criteria on MultiSentiment-CNN",
       "steps": [
         {

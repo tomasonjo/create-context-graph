@@ -1,5 +1,5 @@
 {% raw %}"""Linear connector — imports issues, projects, cycles, teams, users,
-comments, relations, history (as decision traces), milestones, initiatives,
+comments, relations, history (as reasoning traces), milestones, initiatives,
 attachments, and Linear Docs."""
 
 from __future__ import annotations
@@ -374,7 +374,7 @@ class LinearConnector:
                 if comments_page_info.get("hasNextPage"):
                     logger.warning("Issue %s has more than %d comments; only first page imported", identifier, MAX_COMMENTS_PER_ISSUE)
 
-                # Issue History → Decision Traces
+                # Issue History → Reasoning Traces
                 history_connection = issue.get("history") or {}
                 history_nodes = history_connection.get("nodes", [])
                 if len(history_nodes) >= 2:
@@ -401,7 +401,7 @@ class LinearConnector:
 
                 history_page_info = history_connection.get("pageInfo") or {}
                 if history_page_info.get("hasNextPage"):
-                    logger.warning("Issue %s has more than %d history entries; decision trace may be incomplete", identifier, MAX_HISTORY_PER_ISSUE)
+                    logger.warning("Issue %s has more than %d history entries; reasoning trace may be incomplete", identifier, MAX_HISTORY_PER_ISSUE)
 
                 # Document from description
                 desc = issue.get("description", "")

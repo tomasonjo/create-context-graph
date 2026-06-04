@@ -316,8 +316,10 @@ async def get_schema_visualization() -> dict:
                 collect=False,
             )
             domain_labels = set(domain_labels_result[0]["domain_labels"]) if domain_labels_result else set()
-            # Also include infrastructure labels
-            domain_labels |= {"Document", "DecisionTrace", "TraceStep"}
+            # Also include infrastructure labels managed by the app. Reasoning
+            # trace labels are owned by neo4j-agent-memory and are not exposed
+            # as a custom domain schema.
+            domain_labels |= {"Document"}
 
             # Filter schema nodes to only domain-relevant labels
             filtered_nodes = []

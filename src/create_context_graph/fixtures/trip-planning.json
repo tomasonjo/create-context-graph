@@ -2026,7 +2026,7 @@
   ],
   "traces": [
     {
-      "id": "destination_selection",
+      "id": "c96e5f58-4ee4-5212-b960-bd61e7d86341",
       "task": "Help choose the best destination for a couple trip in spring",
       "steps": [
         {
@@ -2048,7 +2048,7 @@
       "outcome": "Recommend Nepal's Everest region as the best destination, offering the perfect combination of world-class adventure trekking, exceptional value at $45/day, and outstanding traveler satisfaction scores for spring season exploration."
     },
     {
-      "id": "hotel_selection",
+      "id": "64b2bc6e-56cc-5b9a-a185-ca191e41212d",
       "task": "Select the best hotel in Kyoto for budget $the relevant criteria/night",
       "steps": [
         {
@@ -2070,7 +2070,7 @@
       "outcome": "Selected Sakura Terrace The Gallery for $135/night due to its combination of highest guest ratings, convenient location near transportation hubs, included breakfast, and overwhelmingly positive feedback from travelers with similar preferences and itineraries."
     },
     {
-      "id": "itinerary_optimization",
+      "id": "16f3ff6a-f25a-5fbb-bd15-b7d1c306ac70",
       "task": "Optimize itinerary Peru Historical Journey for best experience within budget",
       "steps": [
         {

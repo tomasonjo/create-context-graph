@@ -254,7 +254,7 @@ document_templates:
       ancillary revenue from services, and channel mix analysis.
     required_entities: [Hotel, Reservation, Room, Service]
 
-decision_traces:
+reasoning_traces:
   - id: room_upgrade
     task: "Decide whether to upgrade {{guest.name}} to a {{room.room_type}} room"
     steps:

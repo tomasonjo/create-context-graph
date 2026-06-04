@@ -18,7 +18,7 @@ ROUTES_TEMPLATE = TEMPLATES_BASE / "backend" / "shared" / "routes.py.j2"
 CHAT_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "ChatInterface.tsx.j2"
 GRAPH_VIEW_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "ContextGraphView.tsx.j2"
 DOC_BROWSER_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "DocumentBrowser.tsx.j2"
-DECISION_TRACE_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "DecisionTracePanel.tsx.j2"
+REASONING_TRACE_TEMPLATE = TEMPLATES_BASE / "frontend" / "components" / "ReasoningTracePanel.tsx.j2"
 
 
 # ---------------------------------------------------------------------------
@@ -500,8 +500,8 @@ class TestCompositeKeyRegressions:
             "tool call timeline key must be `${tc.name}-${j}`"
         )
 
-    def test_decision_trace_step_key_is_composite(self):
-        src = DECISION_TRACE_TEMPLATE.read_text()
+    def test_reasoning_trace_step_key_is_composite(self):
+        src = REASONING_TRACE_TEMPLATE.read_text()
         assert 'key={`step-${i}-${(step.action || "").slice(0, 32)}`}' in src, (
             "trace step key must include the action prefix, not just the index"
         )

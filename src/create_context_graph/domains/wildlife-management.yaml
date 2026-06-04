@@ -240,7 +240,7 @@ document_templates:
       and resource allocation for monitoring equipment.
     required_entities: [Person, Species, Habitat]
 
-decision_traces:
+reasoning_traces:
   - id: species_intervention
     task: "Evaluate whether to intervene for declining {{species.common_name}} population in {{habitat.name}}"
     steps:

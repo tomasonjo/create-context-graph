@@ -1928,7 +1928,7 @@
   ],
   "traces": [
     {
-      "id": "memory_consolidation",
+      "id": "32a9ce0f-6a99-57d6-84ef-123d54dc6034",
       "task": "Decide which memories to consolidate or prune for agent AlphaAssist",
       "steps": [
         {
@@ -1950,7 +1950,7 @@
       "outcome": "Decided to prune 178 low-importance memories older than 30 days and consolidate 14 episodic memory clusters into 6 higher-level summaries, reducing memory footprint by 31% while preserving all critical task-relevant information."
     },
     {
-      "id": "tool_selection",
+      "id": "1f110948-aced-57ef-83a3-80b3f95d2c94",
       "task": "Determine which tool to invoke for user request in conversation conv-20240316-002",
       "steps": [
         {
@@ -1972,7 +1972,7 @@
       "outcome": "Selected DatabaseQueryTool as primary tool due to highest relevance score and strong historical performance pattern for sales data queries."
     },
     {
-      "id": "entity_resolution",
+      "id": "b1eaf8e6-f683-5734-9b3e-da77ac2e4861",
       "task": "Resolve ambiguous entity reference 'Singapore' across conversations",
       "steps": [
         {

@@ -241,7 +241,7 @@ class TestNamsRenderedTemplates:
         assert adapter.exists()
         src = adapter.read_text()
         assert "list_documents_nams" in src
-        assert "list_traces_nams" in src
+        assert "list_reasoning_traces" in src
         assert "expand_node_nams" in src
         assert "schema_visualization_nams" in src
         assert "get_entity_detail_nams" in src
@@ -251,7 +251,7 @@ class TestNamsRenderedTemplates:
         routes = (out / "backend" / "app" / "routes.py").read_text()
         assert "_is_nams" in routes
         assert "list_documents_nams" in routes
-        assert "list_traces_nams" in routes
+        assert "list_reasoning_traces" in routes
         assert "expand_node_nams" in routes
 
     def test_mcp_config_nams_shape_when_enabled(self, tmp_path):

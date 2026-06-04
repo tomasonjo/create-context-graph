@@ -115,7 +115,7 @@ async def ingest_fixtures_nams(fixture_data: dict[str, Any], domain_id: str) -> 
       the document is a queryable long-term entity AND
       ``short_term.add_message(role="document")`` so the NAMS extractor
       sees the prose.
-    * Decision traces use the reasoning REST API.
+    * Reasoning traces use the native reasoning API.
     """
     client = get_client()
     if client is None:
@@ -182,7 +182,7 @@ async def ingest_fixtures_nams(fixture_data: dict[str, Any], domain_id: str) -> 
             print(f"  [warn] Document {title}: {e}")
     print(f"  [2/3] Ingested {doc_count} documents (dual-tracked: entity + message)")
 
-    # 4. Decision traces via reasoning API
+    # 4. Reasoning traces via native memory API
     trace_session = f"traces-{domain_id}"
     trace_count = 0
     for trace_data in fixture_data.get("traces", []):
@@ -207,7 +207,7 @@ async def ingest_fixtures_nams(fixture_data: dict[str, Any], domain_id: str) -> 
             trace_count += 1
         except Exception as e:
             print(f"  [warn] Trace: {e}")
-    print(f"  [3/3] Ingested {trace_count} decision traces")
+    print(f"  [3/3] Ingested {trace_count} reasoning traces")
 
 
 # ---------------------------------------------------------------------------
@@ -313,18 +313,18 @@ async def get_document_nams(title: str) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
-# Decision traces — NAMS reasoning API
+# Reasoning traces — native neo4j-agent-memory API
 # ---------------------------------------------------------------------------
 
 
-async def list_traces_nams() -> list[dict[str, Any]]:
+async def list_reasoning_traces() -> list[dict[str, Any]]:
     client = get_client()
     if client is None:
         return []
     try:
         traces = await client.reasoning.list_traces()
     except Exception as e:
-        logger.info("list_traces_nams: list_traces failed: %s", e)
+        logger.info("list_reasoning_traces: list_traces failed: %s", e)
         return []
 
     results: list[dict[str, Any]] = []

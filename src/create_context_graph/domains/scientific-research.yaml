@@ -244,7 +244,7 @@ document_templates:
       Journal target: {{paper.journal}}.
     required_entities: [Paper, Researcher, Institution, Experiment, Dataset]
 
-decision_traces:
+reasoning_traces:
   - id: research_direction
     task: "Evaluate whether to pursue research direction based on {{paper.title}} findings"
     steps:

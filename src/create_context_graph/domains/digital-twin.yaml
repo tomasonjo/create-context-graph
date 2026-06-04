@@ -237,7 +237,7 @@ document_templates:
       for optimization.
     required_entities: [Asset, System, Sensor, MaintenanceRecord]
 
-decision_traces:
+reasoning_traces:
   - id: predictive_maintenance
     task: "Determine if asset {{asset.name}} requires predictive maintenance"
     steps:

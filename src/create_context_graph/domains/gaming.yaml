@@ -246,7 +246,7 @@ document_templates:
       Item economy impact: {{item.rarity}} tier pricing trends.
     required_entities: [Character, Item, Quest, Achievement]
 
-decision_traces:
+reasoning_traces:
   - id: balance_adjustment
     task: "Evaluate whether {{character.character_class}} class needs balance adjustment"
     steps:

@@ -1423,7 +1423,7 @@
   ],
   "traces": [
     {
-      "id": "alert_triage",
+      "id": "8ee96ba4-c1b6-5e1d-98ce-d5750f283509",
       "task": "Triage alert Vibration Anomaly Detected with severity high",
       "steps": [
         {
@@ -1450,7 +1450,7 @@
       "outcome": "Triage: the assessed criteria. Owner: the assessed criteria. Escalation: the assessed criteria"
     },
     {
-      "id": "patch_prioritization",
+      "id": "a30f1c0e-ec30-515f-86ef-824ad44ca178",
       "task": "Prioritize patching for VUL-2025-0004",
       "steps": [
         {
@@ -1477,7 +1477,7 @@
       "outcome": "Priority: high. Window: the assessed criteria. Risk-accepted assets: the assessed criteria"
     },
     {
-      "id": "incident_containment",
+      "id": "e6515056-fc77-59b0-afe2-8dc6ffee6022",
       "task": "Containment plan for INC-2025-078 API latency spike",
       "steps": [
         {
@@ -1499,7 +1499,7 @@
       "outcome": "Action: immediate follow-up recommended. Assets isolated: the assessed criteria. User actions: the assessed criteria"
     },
     {
-      "id": "false_positive_review",
+      "id": "7985add6-56e7-5960-ad00-580eea6fe153",
       "task": "Review repeated false positives from cloud_native",
       "steps": [
         {

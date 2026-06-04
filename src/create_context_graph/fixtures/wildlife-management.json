@@ -2090,7 +2090,7 @@
   ],
   "traces": [
     {
-      "id": "species_intervention",
+      "id": "d677e04c-c333-5ab8-95d1-7cb7a187edda",
       "task": "Evaluate whether to intervene for declining Gray Wolf population in Borneo Lowland Rainforest",
       "steps": [
         {
@@ -2117,7 +2117,7 @@
       "outcome": "Immediate intervention approved: deploying 2 additional ranger patrols to combat illegal logging, establishing 3 wildlife corridors to reduce human-orangutan conflict, and allocating $8,000 for habitat restoration in degraded areas within 6 weeks."
     },
     {
-      "id": "habitat_protection",
+      "id": "5fc97849-bacd-59b2-aa2a-6324ed9909d3",
       "task": "Determine protection priority level for Borneo Lowland Rainforest",
       "steps": [
         {
@@ -2139,7 +2139,7 @@
       "outcome": "Assign CRITICAL protection priority status to Borneo Lowland Rainforest with immediate allocation of emergency conservation funding and implementation of expanded anti-poaching patrols and community-based forest monitoring programs."
     },
     {
-      "id": "camera_deployment",
+      "id": "3a37b5c9-b3f5-56d7-a281-2ce3e6f20d71",
       "task": "Optimize camera trap placement in Borneo Lowland Rainforest for monitoring African Elephant",
       "steps": [
         {

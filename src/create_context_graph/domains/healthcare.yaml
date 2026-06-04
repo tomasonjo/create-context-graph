@@ -247,7 +247,7 @@ document_templates:
       Include discussion points, treatment plan decisions, and action items.
     required_entities: [Patient, Provider, Facility, Diagnosis]
 
-decision_traces:
+reasoning_traces:
   - id: treatment_selection
     task: "Select appropriate treatment plan for {{patient.name}} diagnosed with {{diagnosis.name}}"
     steps:
@@ -381,7 +381,7 @@ demo_scenarios:
     prompts:
       - "Are there any potential drug interactions in current prescriptions?"
       - "What treatments have been most effective for patients with heart failure?"
-      - "Show me the most recent decision traces for treatment plans"
+      - "Show me the most recent reasoning traces for treatment plans"
 
   - name: Provider Network
     prompts:

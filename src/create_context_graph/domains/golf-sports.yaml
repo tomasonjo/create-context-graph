@@ -241,7 +241,7 @@ document_templates:
       Include trend analysis and recommendations.
     required_entities: [Player, Handicap, Round]
 
-decision_traces:
+reasoning_traces:
   - id: tournament_selection
     task: "Evaluate which tournament {{player.name}} should enter next"
     steps:

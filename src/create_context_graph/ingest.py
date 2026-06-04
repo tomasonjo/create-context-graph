@@ -27,13 +27,13 @@ Two backend-specific paths:
   ``short_term.add_message(role="document")`` to feed the NAMS extractor.
   Entity records whose connector declares a ``BODY_FIELDS`` mapping also
   have their body field sent through ``add_message`` for the same reason.
-  Decision traces go through the reasoning REST API unchanged.
+  Reasoning traces go through ``client.reasoning``.
 
 * **Bolt** (self-hosted) — full Cypher ingest. Entities via
   ``MemoryClient.long_term.add_entity`` with attributes, relationships via
-  direct Cypher MERGE (native edges, no ccg-edges encoding), documents and
-  decision traces likewise. The two backends produce structurally different
-  graphs by design; the NAMS shape converges with bolt once
+  direct Cypher MERGE (native edges, no ccg-edges encoding), documents via
+  direct Cypher, and reasoning traces via ``MemoryClient.reasoning``. The two
+  backends produce structurally different graphs by design; the NAMS shape converges with bolt once
   ``add_relationship`` is available upstream.
 """
 
@@ -334,7 +334,7 @@ async def run_nams_ingest(
             counts["failures"] += 1
     _emit("documents", count=counts["documents"])
 
-    # Stage 3: decision traces via reasoning API (unchanged).
+    # Stage 3: reasoning traces via native memory API.
     traces = fixture_data.get("traces", [])
     trace_session = f"traces-{domain_id}"
     for trace_data in traces:
@@ -413,7 +413,7 @@ async def _ingest_with_nams(
             )
             progress.update(
                 progress.add_task(
-                    f"[3/3] Ingested {counts['traces']} decision traces",
+                    f"[3/3] Ingested {counts['traces']} reasoning traces",
                     total=None,
                 ),
                 completed=1,
@@ -556,8 +556,6 @@ async def _ingest_with_memory_client(
                     MATCH (d:Document) WHERE d.domain = $domain
                     MATCH (e) WHERE e.name IS NOT NULL
                       AND NOT 'Document' IN labels(e)
-                      AND NOT 'DecisionTrace' IN labels(e)
-                      AND NOT 'TraceStep' IN labels(e)
                       AND (e.domain IS NULL OR e.domain = $domain)
                       AND d.content CONTAINS e.name
                     MERGE (d)-[:MENTIONS]->(e)
@@ -569,40 +567,33 @@ async def _ingest_with_memory_client(
                     console.print(f"  [yellow]Warning:[/yellow] Document links: {e}")
             progress.update(task, description=f"[3/4] Ingested {doc_count} documents")
 
-            # Step 4: decision traces
-            task = progress.add_task("[4/4] Ingesting decision traces...", total=None)
+            # Step 4: reasoning traces
+            task = progress.add_task("[4/4] Ingesting reasoning traces...", total=None)
             trace_count = 0
             traces = fixture_data.get("traces", [])
             for trace_data in traces:
                 try:
-                    await client.graph.execute_write(
-                        "MERGE (t:DecisionTrace {id: $id}) "
-                        "SET t.task = $task, t.outcome = $outcome, t.domain = $domain",
-                        {
-                            "id": trace_data.get("id", ""),
-                            "task": trace_data.get("task", ""),
-                            "outcome": trace_data.get("outcome", ""),
-                            "domain": ontology.domain.id,
-                        },
+                    trace = await client.reasoning.start_trace(
+                        session_id=f"traces-{ontology.domain.id}",
+                        task=trace_data.get("task", ""),
                     )
-                    for i, step in enumerate(trace_data.get("steps", [])):
-                        await client.graph.execute_write(
-                            "MATCH (t:DecisionTrace {id: $trace_id}) "
-                            "MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number}) "
-                            "SET s.thought = $thought, s.action = $action, s.observation = $observation "
-                            "MERGE (t)-[:HAS_STEP]->(s)",
-                            {
-                                "trace_id": trace_data.get("id", ""),
-                                "step_number": i + 1,
-                                "thought": step.get("thought", ""),
-                                "action": step.get("action", ""),
-                                "observation": step.get("observation", ""),
-                            },
+                    trace_id = getattr(trace, "id", None) or trace_data.get("id", "")
+                    for step in trace_data.get("steps", []):
+                        await client.reasoning.add_step(
+                            trace_id=trace_id,
+                            thought=step.get("thought", ""),
+                            action=step.get("action", ""),
+                            observation=step.get("observation", ""),
                         )
+                    await client.reasoning.complete_trace(
+                        trace_id=trace_id,
+                        outcome=trace_data.get("outcome", ""),
+                        success=True,
+                    )
                     trace_count += 1
                 except Exception as e:
                     console.print(f"  [yellow]Warning:[/yellow] Trace: {e}")
-            progress.update(task, description=f"[4/4] Ingested {trace_count} decision traces")
+            progress.update(task, description=f"[4/4] Ingested {trace_count} reasoning traces")
 
     console.print(
         f"\n  [green]Ingestion complete:[/green] {entity_count} entities, "
@@ -727,8 +718,6 @@ async def _ingest_with_driver(
                         "MATCH (d:Document) WHERE d.domain = $domain "
                         "MATCH (e) WHERE e.name IS NOT NULL "
                         "AND NOT 'Document' IN labels(e) "
-                        "AND NOT 'DecisionTrace' IN labels(e) "
-                        "AND NOT 'TraceStep' IN labels(e) "
                         "AND (e.domain IS NULL OR e.domain = $domain) "
                         "AND d.content CONTAINS e.name "
                         "MERGE (d)-[:MENTIONS]->(e)",
@@ -738,40 +727,15 @@ async def _ingest_with_driver(
                     console.print(f"  [yellow]Warning:[/yellow] Document links: {e}")
         progress.update(task, description=f"[4/5] Created {doc_count} documents")
 
-        task = progress.add_task("[5/5] Creating decision traces...", total=None)
+        task = progress.add_task("[5/5] Creating reasoning traces...", total=None)
         trace_count = 0
         traces = fixture_data.get("traces", [])
-        async with driver.session() as session:
-            for trace_data in traces:
-                try:
-                    await session.run(
-                        "MERGE (t:DecisionTrace {id: $id}) "
-                        "SET t.task = $task, t.outcome = $outcome, t.domain = $domain",
-                        {
-                            "id": trace_data.get("id", ""),
-                            "task": trace_data.get("task", ""),
-                            "outcome": trace_data.get("outcome", ""),
-                            "domain": ontology.domain.id,
-                        },
-                    )
-                    for i, step in enumerate(trace_data.get("steps", [])):
-                        await session.run(
-                            "MATCH (t:DecisionTrace {id: $trace_id}) "
-                            "MERGE (s:TraceStep {trace_id: $trace_id, step_number: $step_number}) "
-                            "SET s.thought = $thought, s.action = $action, s.observation = $observation "
-                            "MERGE (t)-[:HAS_STEP]->(s)",
-                            {
-                                "trace_id": trace_data.get("id", ""),
-                                "step_number": i + 1,
-                                "thought": step.get("thought", ""),
-                                "action": step.get("action", ""),
-                                "observation": step.get("observation", ""),
-                            },
-                        )
-                    trace_count += 1
-                except Exception as e:
-                    console.print(f"  [yellow]Warning:[/yellow] Trace: {e}")
-        progress.update(task, description=f"[5/5] Created {trace_count} decision traces")
+        if traces:
+            console.print(
+                "  [yellow]Warning:[/yellow] neo4j-agent-memory is required to seed "
+                "reasoning traces; skipping trace seed in direct-driver fallback"
+            )
+        progress.update(task, description=f"[5/5] Created {trace_count} reasoning traces")
 
     await driver.close()
     console.print(

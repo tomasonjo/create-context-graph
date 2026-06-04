@@ -281,7 +281,7 @@ document_templates:
       variances, and recommendations for the next quarter.
     required_entities: [Budget, Program, Official]
 
-decision_traces:
+reasoning_traces:
   - id: program_funding
     task: "Decide funding level for {{program.name}} in next fiscal year"
     steps:

@@ -238,7 +238,7 @@ document_templates:
       and follow-up questions.
     required_entities: [Source, Investigation, Claim]
 
-decision_traces:
+reasoning_traces:
   - id: source_credibility
     task: "Assess credibility of source {{source.name}} for story {{story.headline}}"
     steps:

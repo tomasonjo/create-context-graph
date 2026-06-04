@@ -52,7 +52,7 @@ class NormalizedData(BaseModel):
     )
     traces: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Decision traces as list of dicts with id, task, outcome, steps",
+        description="Reasoning traces as list of dicts with id, task, outcome, steps",
     )
 
     def merge(self, other: NormalizedData) -> NormalizedData:

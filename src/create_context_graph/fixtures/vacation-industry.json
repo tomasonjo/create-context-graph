@@ -1953,7 +1953,7 @@
   ],
   "traces": [
     {
-      "id": "pricing_strategy",
+      "id": "0f987d68-afd4-5dc0-a655-769c10f44cac",
       "task": "Determine optimal pricing for Emerald Golf & Spa Resort during Ski Season Peak",
       "steps": [
         {
@@ -1980,7 +1980,7 @@
       "outcome": "Implement a 22% rate increase for ski season peak period with dynamic pricing that adjusts daily based on remaining inventory, while enhancing spa package offerings to maintain value perception and justify premium positioning."
     },
     {
-      "id": "package_design",
+      "id": "2b16f56f-d8d5-5c23-ae79-0b70024e7b00",
       "task": "Design a new vacation package for wellness travelers at Alpine Peaks Mountain Resort",
       "steps": [
         {
@@ -2002,7 +2002,7 @@
       "outcome": "Launch the 'Alpine Adrenaline' 4-day package at $1,149 per person, featuring guided glacier hiking, mountain biking trails, zip-lining, and one premium heli-skiing session, positioned as a mid-luxury adventure experience that maximizes both guest satisfaction and revenue potential."
     },
     {
-      "id": "seasonal_planning",
+      "id": "cb602d4c-ed8a-5e1c-b9e3-e19c3dc016ec",
       "task": "Plan operations for upcoming Spring Break Season at Serenity Hills Wellness Retreat",
       "steps": [
         {

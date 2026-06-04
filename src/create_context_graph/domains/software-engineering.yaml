@@ -239,7 +239,7 @@ document_templates:
       engineering team about {{topic}}.
     required_entities: [Person, Organization]
 
-decision_traces:
+reasoning_traces:
   - id: deploy_decision
     task: "Decide whether to deploy {{pr.title}} to production on a Friday afternoon"
     steps:

@@ -524,7 +524,7 @@ class ProjectRenderer:
             "frontend/app/globals.css.j2": "app/globals.css",
             "frontend/components/ChatInterface.tsx.j2": "components/ChatInterface.tsx",
             "frontend/components/ContextGraphView.tsx.j2": "components/ContextGraphView.tsx",
-            "frontend/components/DecisionTracePanel.tsx.j2": "components/DecisionTracePanel.tsx",
+            "frontend/components/ReasoningTracePanel.tsx.j2": "components/ReasoningTracePanel.tsx",
             "frontend/components/DocumentBrowser.tsx.j2": "components/DocumentBrowser.tsx",
             "frontend/components/ErrorBoundary.tsx.j2": "components/ErrorBoundary.tsx",
             "frontend/components/Provider.tsx.j2": "components/Provider.tsx",

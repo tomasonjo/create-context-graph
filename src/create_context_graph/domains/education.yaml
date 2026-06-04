@@ -251,7 +251,7 @@ document_templates:
       include any requested next steps.
     required_entities: [Instructor, Student, Course]
 
-decision_traces:
+reasoning_traces:
   - id: academic_intervention
     task: "Decide on academic intervention for {{student.name}} in {{course.name}}"
     steps:

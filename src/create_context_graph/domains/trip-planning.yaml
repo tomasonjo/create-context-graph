@@ -253,7 +253,7 @@ document_templates:
       and miscellaneous cost breakdowns with savings tips.
     required_entities: [Itinerary, Destination, Hotel]
 
-decision_traces:
+reasoning_traces:
   - id: destination_selection
     task: "Help choose the best destination for a {{review.travel_style}} trip in {{destination.best_season}}"
     steps:

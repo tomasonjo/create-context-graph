@@ -249,7 +249,7 @@ document_templates:
       and age restrictions. Highlight featured and seasonal specials.
     required_entities: [Resort, Activity, Season]
 
-decision_traces:
+reasoning_traces:
   - id: pricing_strategy
     task: "Determine optimal pricing for {{resort.name}} during {{season.name}}"
     steps:

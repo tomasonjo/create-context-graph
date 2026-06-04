@@ -1516,7 +1516,7 @@
   ],
   "traces": [
     {
-      "id": "settlement_evaluation",
+      "id": "237ad444-9432-54e7-9653-26ca87514e7b",
       "task": "Evaluate settlement offer for Senior Analyst",
       "steps": [
         {
@@ -1543,7 +1543,7 @@
       "outcome": "Recommendation: proceed with the proposed course of action. Settlement value: the assessed criteria. Risk: the assessed criteria"
     },
     {
-      "id": "motion_strategy",
+      "id": "c3fdbc82-fbc1-56b0-8fa0-250d9e0f31bd",
       "task": "Decide whether to file motion in Operations Manager",
       "steps": [
         {
@@ -1565,7 +1565,7 @@
       "outcome": "Decision: Approve. Filing date: the assessed criteria. Reviewer: the assessed criteria"
     },
     {
-      "id": "contract_negotiation",
+      "id": "98c443a7-bddd-5375-a89d-f328fce2924c",
       "task": "Decide negotiation position on Technical Specification",
       "steps": [
         {
@@ -1587,7 +1587,7 @@
       "outcome": "Position: the assessed criteria. Concessions: the assessed criteria. Walkaway: the assessed criteria"
     },
     {
-      "id": "conflict_check",
+      "id": "5ebd10d5-d26c-5587-bc5b-42456241931c",
       "task": "Run conflict check for new matter Annual Compliance Audit",
       "steps": [
         {

@@ -1957,7 +1957,7 @@
   ],
   "traces": [
     {
-      "id": "knowledge_connection",
+      "id": "0999292f-914b-5540-9eaf-059f389e0678",
       "task": "Find meaningful connections between Blockchain Technology and other knowledge areas",
       "steps": [
         {
@@ -1979,7 +1979,7 @@
       "outcome": "Created a new knowledge map highlighting three key connection clusters: Blockchain-Supply Chain-IoT, Blockchain-Digital Identity-Privacy, and Blockchain-Economics-Game Theory, with action items to reach out to Sarah and Marcus about potential collaborative research opportunities."
     },
     {
-      "id": "project_prioritization",
+      "id": "32330b2a-f8ce-5943-a199-2d1ad0efe415",
       "task": "Prioritize among active projects based on current context",
       "steps": [
         {
@@ -2001,7 +2001,7 @@
       "outcome": "Prioritize the machine learning course as top priority due to immediate deadlines and strong alignment with current goals, followed by the client consultation project pending Sarah's return, while deprioritizing the garden planning project until after the course completion."
     },
     {
-      "id": "contact_reconnection",
+      "id": "45452c60-61ce-58e9-9adb-5f900e951d69",
       "task": "Identify contacts to reconnect with based on shared interests",
       "steps": [
         {

@@ -1916,7 +1916,7 @@
   ],
   "traces": [
     {
-      "id": "pricing_strategy",
+      "id": "5818df2d-d0fa-57c2-bb26-b508665bafe9",
       "task": "Determine optimal listing price for 445 Oak Grove Lane, Austin, TX 78704",
       "steps": [
         {
@@ -1943,7 +1943,7 @@
       "outcome": "Based on comparable sales analysis and strong property condition, recommend listing at $515,000 to position competitively while maximizing value in the current balanced market conditions."
     },
     {
-      "id": "offer_evaluation",
+      "id": "1d806dbc-b579-5d06-b1d2-d82dca4743a6",
       "task": "Evaluate purchase offer of $the relevant criteria for 15677 County Road 42, Steamboat Springs, CO 80487",
       "steps": [
         {
@@ -1965,7 +1965,7 @@
       "outcome": "Recommend accepting the offer as it's market-appropriate with strong buyer qualifications and favorable terms, though consider a counter-offer at $492,000 to test the buyer's flexibility given their waived contingencies."
     },
     {
-      "id": "investment_analysis",
+      "id": "385a5c69-7302-58b3-be2f-265f82c8ab20",
       "task": "Evaluate 425 South Tryon Street #1204, Charlotte, NC 28202 as an investment property",
       "steps": [
         {

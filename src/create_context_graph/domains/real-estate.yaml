@@ -256,7 +256,7 @@ document_templates:
       and next steps.
     required_entities: [Agent, Person, Property, Neighborhood]
 
-decision_traces:
+reasoning_traces:
   - id: pricing_strategy
     task: "Determine optimal listing price for {{property.address}}"
     steps:

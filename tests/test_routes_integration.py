@@ -253,6 +253,9 @@ def _fake_client():
     client.long_term.get_entity_by_name = AsyncMock(return_value=None)
     client.long_term.get_entity = AsyncMock()
     client.reasoning.list_traces = AsyncMock(return_value=[])
+    client.reasoning.start_trace = AsyncMock(return_value=SimpleNamespace(id="trace-1"))
+    client.reasoning.add_step = AsyncMock(return_value=SimpleNamespace(id="step-1"))
+    client.reasoning.complete_trace = AsyncMock(return_value=None)
     return client
 
 
@@ -442,6 +445,38 @@ class TestBoltRoutes:
             body = r.json()
             assert body["memory_backend"] == "bolt"
             assert "neo4j" in body
+
+    def test_chat_records_native_reasoning_trace(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="bolt")
+        client = _fake_client()
+        app, _, cgc = _import_app(backend_dir, backend="bolt", fake_client=client)
+
+        class _Collector:
+            def drain(self): return []
+            def drain_tool_calls(self):
+                return [{"name": "search_patient", "inputs": {"query": "Alice"}, "output_preview": "[]"}]
+            def set_event_queue(self, q): pass
+            def clear_event_queue(self): pass
+            def emit_text_delta(self, t): pass
+            def emit_done(self, t, s): pass
+            def emit_entities_extracted(self, e): pass
+            def emit_preferences_detected(self, p): pass
+
+        collector = _Collector()
+        cgc.get_collector = MagicMock(return_value=collector)
+        sys.modules["app.context_graph_client"].get_collector = cgc.get_collector
+        import app.routes as routes_mod
+        routes_mod.get_collector = cgc.get_collector
+
+        with TestClient(app) as tc:
+            r = tc.post("/api/chat", json={"message": "Find Alice", "session_id": "s-1"})
+            assert r.status_code == 200
+
+        client.reasoning.start_trace.assert_awaited_once()
+        client.reasoning.add_step.assert_awaited_once()
+        client.reasoning.complete_trace.assert_awaited_once()
 
     def test_documents_uses_cypher_path_on_bolt(self, tmp_path):
         from fastapi.testclient import TestClient

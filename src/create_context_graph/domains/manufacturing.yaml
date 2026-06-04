@@ -240,7 +240,7 @@ document_templates:
       to targets and recommendations for improvement.
     required_entities: [ProductionLine, WorkOrder, QualityReport]
 
-decision_traces:
+reasoning_traces:
   - id: production_scheduling
     task: "Determine optimal scheduling for work order {{work_order.work_order_id}} on available production lines"
     steps:

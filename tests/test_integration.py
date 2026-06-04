@@ -195,8 +195,7 @@ class TestFixtureIngestion:
     def test_ingest_financial_services(self, neo4j_session):
         """Verify entities were created with the test domain."""
         result = neo4j_session.run(
-            "MATCH (n) WHERE n.domain = $domain AND NOT n:Document "
-            "AND NOT n:DecisionTrace AND NOT n:TraceStep RETURN count(n) AS cnt",
+            "MATCH (n) WHERE n.domain = $domain AND NOT n:Document RETURN count(n) AS cnt",
             {"domain": self.TEST_DOMAIN},
         )
         count = result.single()["cnt"]

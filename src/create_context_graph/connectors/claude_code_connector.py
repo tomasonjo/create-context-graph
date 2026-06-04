@@ -22,7 +22,7 @@ filesystem.
 The connector extracts:
 * Session structure (projects, sessions, messages, tool calls)
 * File and package entities referenced in tool calls
-* Decision traces from user corrections, error-resolution cycles,
+* Reasoning traces from user corrections, error-resolution cycles,
   and deliberation patterns
 * Developer preferences from explicit statements and behavioral patterns
 """

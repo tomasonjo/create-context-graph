@@ -248,7 +248,7 @@ class TestGetDocument:
 
 
 # ---------------------------------------------------------------------------
-# list_traces_nams
+# list_reasoning_traces
 # ---------------------------------------------------------------------------
 
 
@@ -269,7 +269,7 @@ class TestListTraces:
         client.reasoning.get_trace_with_steps = AsyncMock(return_value=full_trace)
         memory_mod._client = client
 
-        results = _run(adapter.list_traces_nams())
+        results = _run(adapter.list_reasoning_traces())
         assert len(results) == 1
         assert results[0]["task"] == "Diagnose chest pain"
         assert len(results[0]["steps"]) == 2
@@ -283,7 +283,7 @@ class TestListTraces:
         client.reasoning.get_trace_with_steps = AsyncMock()
         memory_mod._client = client
 
-        results = _run(adapter.list_traces_nams())
+        results = _run(adapter.list_reasoning_traces())
         assert results == []
 
 

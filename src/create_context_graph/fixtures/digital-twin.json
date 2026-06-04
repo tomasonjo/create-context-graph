@@ -775,7 +775,7 @@
   ],
   "traces": [
     {
-      "id": "predictive_maintenance",
+      "id": "448dd91f-65ba-5d11-b244-33a115e7e89c",
       "task": "Determine if asset Assembly Conveyor Belt 2 requires predictive maintenance",
       "steps": [
         {
@@ -802,7 +802,7 @@
       "outcome": "Predictive maintenance is recommended for Assembly Conveyor Belt 2 within the next 48-72 hours due to deteriorating sensor indicators and high operational criticality. Schedule maintenance during the next planned production break to minimize impact on connected systems."
     },
     {
-      "id": "alert_triage",
+      "id": "a58b82aa-6e67-5622-9b5b-0d7c57c1c2dd",
       "task": "Triage and prioritize alert ALT-2024-001530 for asset Cooling Water Pump 4A",
       "steps": [
         {
@@ -824,7 +824,7 @@
       "outcome": "Alert prioritized as P1-Critical requiring immediate maintenance intervention within 2 hours, with recommendation to activate backup cooling pump CWP4B and schedule emergency bearing replacement to prevent catastrophic failure of primary cooling system."
     },
     {
-      "id": "system_optimization",
+      "id": "265f0706-aec8-5282-ad21-e4c1e66c101a",
       "task": "Optimize performance of system Fire Suppression System",
       "steps": [
         {

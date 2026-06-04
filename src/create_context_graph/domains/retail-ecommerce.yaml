@@ -238,7 +238,7 @@ document_templates:
       top-selling products, and slow-moving inventory flagged for markdown.
     required_entities: [Product, Category, Order]
 
-decision_traces:
+reasoning_traces:
   - id: pricing_strategy
     task: "Determine optimal pricing for {{product.name}} based on market data and customer behavior"
     steps:

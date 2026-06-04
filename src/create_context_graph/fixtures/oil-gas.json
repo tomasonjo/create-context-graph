@@ -2129,7 +2129,7 @@
   ],
   "traces": [
     {
-      "id": "drilling_decision",
+      "id": "4f4b4ad1-fdb9-55a3-b933-f3dc69f24d83",
       "task": "Evaluate whether to drill a new well in Bakken Formation formation at proposed location",
       "steps": [
         {
@@ -2156,7 +2156,7 @@
       "outcome": "Proceed with drilling authorization based on strong geological indicators, regulatory compliance, and attractive economics that exceed the company's 25% IRR threshold. Secure rig scheduling with Nabors for Q2 spud date to optimize winter drilling conditions."
     },
     {
-      "id": "well_intervention",
+      "id": "88dfd67e-ea9d-5a34-a5af-82daa3122ae0",
       "task": "Determine if well Bone Spring 2H requires workover or stimulation",
       "steps": [
         {
@@ -2178,7 +2178,7 @@
       "outcome": "Recommend proceeding with restimulation of Bone Spring 2H based on favorable economics and reservoir pressure maintenance, with operations scheduled for Q2 to optimize production before peak demand season."
     },
     {
-      "id": "equipment_replacement",
+      "id": "2a0414ea-d7e9-53c3-92d0-ed9882c7910a",
       "task": "Assess whether to repair or replace Natco 3-Phase Separator at well Powder River 6H",
       "steps": [
         {

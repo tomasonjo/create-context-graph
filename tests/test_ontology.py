@@ -109,10 +109,10 @@ class TestLoadDomain:
             assert tmpl.name
             assert tmpl.count > 0
 
-    def test_decision_traces_present(self):
+    def test_reasoning_traces_present(self):
         ont = load_domain("financial-services")
-        assert len(ont.decision_traces) > 0
-        for trace in ont.decision_traces:
+        assert len(ont.reasoning_traces) > 0
+        for trace in ont.reasoning_traces:
             assert trace.id
             assert trace.task
             assert len(trace.steps) > 0
@@ -332,8 +332,8 @@ class TestCypherQueryValidation:
         """All node labels in agent_tools Cypher must exist in entity_types."""
         ontology = load_domain(domain_id)
         valid_labels = {et.label for et in ontology.entity_types}
-        # Add common Neo4j built-in labels
-        valid_labels.update({"Document", "DecisionTrace", "TraceStep", "Message"})
+        # Add common application/memory labels used by built-in tools.
+        valid_labels.update({"Document", "Message"})
 
         for tool in ontology.agent_tools:
             labels = self._extract_labels(tool.cypher)
@@ -350,8 +350,8 @@ class TestCypherQueryValidation:
         """All relationship types in agent_tools Cypher must exist in relationships."""
         ontology = load_domain(domain_id)
         valid_rels = {r.type for r in ontology.relationships}
-        # Add common relationship types used by neo4j-agent-memory and built-in
-        valid_rels.update({"MENTIONS", "HAS_STEP", "HAS_DOCUMENT"})
+        # Add common relationship types used by built-in tools.
+        valid_rels.update({"MENTIONS", "HAS_DOCUMENT"})
 
         for tool in ontology.agent_tools:
             rel_types = self._extract_rel_types(tool.cypher)

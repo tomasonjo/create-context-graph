@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid as _uuid
 
 from fastapi import APIRouter, HTTPException
@@ -22,7 +23,7 @@ from app.memory_adapter import (
     get_document_nams,
     get_entity_detail_nams,
     list_documents_nams,
-    list_traces_nams,
+    list_reasoning_traces,
     schema_visualization_nams,
     search_entities_nams,
 )
@@ -38,6 +39,102 @@ except ImportError:
     handle_message_stream = None
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+_TRACE_TEXT_LIMIT = 4000
+
+
+def _truncate_trace_text(value: object, limit: int = _TRACE_TEXT_LIMIT) -> str:
+    text = str(value or "")
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _format_trace_value(value: object, limit: int = 1200) -> str:
+    try:
+        text = json.dumps(value, default=str)
+    except Exception:
+        text = str(value or "")
+    return _truncate_trace_text(text, limit)
+
+
+def _public_tool_rationale(tool_name: str, inputs: dict, message: str) -> str:
+    """Summarize why a tool was used from observable inputs only."""
+    request = _truncate_trace_text(message, 700)
+    key_bits = []
+    for key, value in list(inputs.items())[:4]:
+        key_bits.append(f"{key}={_format_trace_value(value, 240)}")
+    scoped_inputs = f" using {', '.join(key_bits)}" if key_bits else ""
+
+    if tool_name == "run_cypher":
+        return (
+            "Query the graph directly for evidence needed to answer the user request"
+            f"{scoped_inputs}: {request}"
+        )
+    readable_name = tool_name.replace("_", " ")
+    return (
+        f"Use {readable_name} to retrieve graph evidence relevant to the user request"
+        f"{scoped_inputs}: {request}"
+    )
+
+
+async def _record_chat_reasoning_trace(
+    *,
+    session_id: str,
+    message: str,
+    response_text: str,
+    tool_calls: list[dict] | None,
+    success: bool = True,
+) -> None:
+    """Persist one native reasoning trace for a chat turn.
+
+    We only record observable steps: tool names, inputs, and summarized
+    outputs. The model's private reasoning is never inferred or stored.
+    """
+    try:
+        from app.memory import get_client
+        client = get_client()
+        if client is None:
+            return
+        trace = await client.reasoning.start_trace(
+            session_id=session_id,
+            task=_truncate_trace_text(message),
+        )
+        trace_id = getattr(trace, "id", None)
+        if trace_id is None:
+            return
+
+        calls = tool_calls or []
+        if calls:
+            for call in calls:
+                name = str(call.get("name") or "tool")
+                inputs_raw = call.get("inputs") or {}
+                inputs = inputs_raw if isinstance(inputs_raw, dict) else {}
+                await client.reasoning.add_step(
+                    trace_id=trace_id,
+                    thought=_public_tool_rationale(name, inputs, message),
+                    action=_truncate_trace_text(
+                        f"{name} inputs={_format_trace_value(inputs, 1600)}", 2000
+                    ),
+                    observation=_truncate_trace_text(
+                        call.get("output_preview") or "Tool completed."
+                    ),
+                )
+        else:
+            await client.reasoning.add_step(
+                trace_id=trace_id,
+                thought="Answer using available conversation and memory context.",
+                action="respond",
+                observation=_truncate_trace_text(response_text or "No response generated."),
+            )
+
+        await client.reasoning.complete_trace(
+            trace_id=trace_id,
+            outcome=_truncate_trace_text(response_text),
+            success=success,
+        )
+    except Exception as e:
+        logger.info("chat reasoning trace recording skipped: %s", e)
 
 
 def _require_neo4j():
@@ -100,8 +197,25 @@ async def chat(request: ChatRequest):
         tool_calls = collector.drain_tool_calls()
         if tool_calls:
             result["tool_calls"] = tool_calls
+        await _record_chat_reasoning_trace(
+            session_id=result.get("session_id") or request.session_id or "",
+            message=request.message,
+            response_text=result.get("response", ""),
+            tool_calls=tool_calls,
+            success=True,
+        )
         return result
     except Exception as e:
+        try:
+            await _record_chat_reasoning_trace(
+                session_id=request.session_id or "failed-chat",
+                message=request.message,
+                response_text=str(e),
+                tool_calls=get_collector().drain_tool_calls(),
+                success=False,
+            )
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -132,7 +246,8 @@ async def chat_stream(request: ChatRequest):
     async def run_agent():
         try:
             if handle_message_stream is not None:
-                await handle_message_stream(request.message, session_id)
+                result = await handle_message_stream(request.message, session_id)
+                response_text = (result or {}).get("response", "")
             else:
                 result = await handle_message(request.message, session_id)
                 response_text = result.get("response", "")
@@ -142,8 +257,30 @@ async def chat_stream(request: ChatRequest):
                     collector.emit_entities_extracted(result["entities_extracted"])
                 if result.get("preferences_detected"):
                     collector.emit_preferences_detected(result["preferences_detected"])
+                await _record_chat_reasoning_trace(
+                    session_id=session_id,
+                    message=request.message,
+                    response_text=response_text,
+                    tool_calls=collector.drain_tool_calls(),
+                    success=True,
+                )
                 collector.emit_done(response_text, session_id)
+                return
+            await _record_chat_reasoning_trace(
+                session_id=session_id,
+                message=request.message,
+                response_text=response_text,
+                tool_calls=collector.drain_tool_calls(),
+                success=True,
+            )
         except Exception as e:
+            await _record_chat_reasoning_trace(
+                session_id=session_id,
+                message=request.message,
+                response_text=str(e),
+                tool_calls=collector.drain_tool_calls(),
+                success=False,
+            )
             try:
                 event_queue.put_nowait({"event": "error", "data": {"detail": str(e)}})
             except Exception:
@@ -176,6 +313,11 @@ async def chat_stream(request: ChatRequest):
                 event_data = json.dumps(event["data"], default=str)
                 yield f"event: {event_type}\ndata: {event_data}\n\n"
                 if event_type in ("done", "error"):
+                    if not task.done():
+                        try:
+                            await asyncio.wait_for(task, timeout=10.0)
+                        except asyncio.TimeoutError:
+                            task.cancel()
                     break
         finally:
             if not task.done():
@@ -386,25 +528,9 @@ async def get_document(title: str):
 
 @router.get("/traces")
 async def list_traces():
-    """List decision traces with their full reasoning steps."""
+    """List reasoning traces with their full steps."""
     _require_neo4j()
-    if _is_nams():
-        results = await list_traces_nams()
-        return {"traces": results}
-    cypher = """
-    MATCH (t:DecisionTrace)
-    WHERE t.domain IS NULL OR t.domain = $domain
-    OPTIONAL MATCH (t)-[:HAS_STEP]->(s:TraceStep)
-    WITH t, s ORDER BY s.step_number
-    RETURN t.id AS id, t.task AS task, t.outcome AS outcome,
-           collect(CASE WHEN s IS NOT NULL THEN {
-               step_number: s.step_number,
-               thought: s.thought,
-               action: s.action,
-               observation: s.observation
-           } END) AS steps
-    """
-    results = await execute_cypher(cypher, {"domain": settings.domain_id})
+    results = await list_reasoning_traces()
     return {"traces": results}
 
 

@@ -2070,7 +2070,7 @@
   ],
   "traces": [
     {
-      "id": "research_direction",
+      "id": "2ca7b029-77da-5ef7-b25a-34f9e441365d",
       "task": "Evaluate whether to pursue research direction based on Neural Plasticity in Adult Brain Networks findings",
       "steps": [
         {
@@ -2097,7 +2097,7 @@
       "outcome": "Recommend pursuing this research direction with a focused 18-month pilot study addressing longitudinal validation, leveraging existing resources and establishing the neuroimaging collaboration before committing to a full-scale investigation."
     },
     {
-      "id": "dataset_selection",
+      "id": "89b105d9-4a00-547a-90b9-9eb56dee0e9f",
       "task": "Select appropriate dataset for experiment Machine Learning Drug Discovery Pipeline",
       "steps": [
         {
@@ -2119,7 +2119,7 @@
       "outcome": "Selected ChEMBL database as the primary dataset due to its optimal balance of comprehensive bioactivity data (2.1M compounds), established validation in peer-reviewed research, open licensing, and manageable computational requirements for the machine learning pipeline."
     },
     {
-      "id": "collaboration_assessment",
+      "id": "87d47fce-c9c7-5065-987f-3a56f0a5a59b",
       "task": "Assess potential research collaboration with Dr. James Liu at Massachusetts Institute of Technology",
       "steps": [
         {

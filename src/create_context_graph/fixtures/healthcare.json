@@ -2638,7 +2638,7 @@
   ],
   "traces": [
     {
-      "id": "treatment_selection",
+      "id": "f9d72213-53b7-5b16-929f-07e65df00a69",
       "task": "Select appropriate treatment plan for Carlos Rivera diagnosed with Acute myocardial infarction, unspecified",
       "steps": [
         {
@@ -2665,7 +2665,7 @@
       "outcome": "Initiated primary percutaneous coronary intervention (PCI) protocol with clopidogrel 600mg loading dose, metoprolol 25mg BID, and atorvastatin 80mg daily, avoiding aspirin due to allergy history. Patient transferred to cardiac catheterization lab for emergent angiography and intervention of suspected right coronary artery occlusion."
     },
     {
-      "id": "referral_decision",
+      "id": "d485157b-b97b-501e-8caf-c02a5b363214",
       "task": "Determine if patient Michael O'Brien should be referred to a specialist for Heart failure, unspecified",
       "steps": [
         {
@@ -2687,7 +2687,7 @@
       "outcome": "Patient Michael O'Brien should be referred to Dr. Sarah Chen at Metro Cardiology Associates for specialized heart failure management given his poor response to initial treatment and declining cardiac function."
     },
     {
-      "id": "readmission_risk",
+      "id": "a9b54ef6-d695-5d5a-8d32-8424be521fc6",
       "task": "Assess readmission risk for Anna Petrov being discharged after Chronic obstructive pulmonary disease with acute exacerbation treatment",
       "steps": [
         {

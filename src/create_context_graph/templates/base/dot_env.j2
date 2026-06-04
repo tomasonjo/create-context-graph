@@ -71,7 +71,7 @@ LINEAR_API_KEY={{ connector_credentials.get('linear', {}).get('api_key', '') }}
 LINEAR_TEAM={{ connector_credentials.get('linear', {}).get('team_key', '') }}
 {% endif %}
 {% if 'google-workspace' in saas_connectors %}
-# Google Workspace (decision trace import)
+# Google Workspace (reasoning trace import)
 GOOGLE_CLIENT_ID={{ connector_credentials.get('google-workspace', {}).get('client_id', '') }}
 GOOGLE_CLIENT_SECRET={{ connector_credentials.get('google-workspace', {}).get('client_secret', '') }}
 GWS_FOLDER_ID={{ connector_credentials.get('google-workspace', {}).get('folder_id', '') }}

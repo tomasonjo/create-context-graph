@@ -225,7 +225,7 @@ document_templates:
       confidence scores, source context, and relationships between entities.
     required_entities: [Conversation, Entity]
 
-decision_traces:
+reasoning_traces:
   - id: memory_consolidation
     task: "Decide which memories to consolidate or prune for agent {{agent.name}}"
     steps:

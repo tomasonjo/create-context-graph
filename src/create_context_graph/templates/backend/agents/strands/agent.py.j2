@@ -98,7 +98,7 @@ def get_graph_schema() -> str:
     return json.dumps(result, default=str)
 {% endraw %}
 
-model = AnthropicModel(model_id="claude-sonnet-4-20250514", max_tokens=4096)
+model = AnthropicModel(model_id="claude-sonnet-4-6", max_tokens=4096)
 
 agent = Agent(
     model=model,

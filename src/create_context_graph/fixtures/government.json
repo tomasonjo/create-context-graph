@@ -1633,7 +1633,7 @@
   ],
   "traces": [
     {
-      "id": "program_funding",
+      "id": "c43c696e-f074-58f6-b2c7-67a337395cab",
       "task": "Decide funding level for Habitat Reforestation Initiative in next fiscal year",
       "steps": [
         {
@@ -1655,7 +1655,7 @@
       "outcome": "Recommendation: proceed with the proposed course of action. Amount: the assessed criteria. Rationale: analysis of available data and alignment with operational guidelines"
     },
     {
-      "id": "regulatory_adoption",
+      "id": "9c243a60-eea9-51e9-8e04-550648b20e94",
       "task": "Decide whether to advance Standard Operating Procedure to final adoption",
       "steps": [
         {
@@ -1677,7 +1677,7 @@
       "outcome": "Decision: Approve. Effective date: the assessed criteria. Conditions: the assessed criteria"
     },
     {
-      "id": "service_delivery_change",
+      "id": "c37a40b6-0594-54a7-a4f4-82aa306f2fdc",
       "task": "Switch cdn-proxy from in-person to online delivery",
       "steps": [
         {
@@ -1699,7 +1699,7 @@
       "outcome": "Decision: Approve. Hybrid period: the assessed criteria. Equity safeguards: the assessed criteria"
     },
     {
-      "id": "agency_audit",
+      "id": "d6f6d032-dd63-5738-9063-9b2cb4544e21",
       "task": "Audit prior-year spending of Apex Financial Partners",
       "steps": [
         {

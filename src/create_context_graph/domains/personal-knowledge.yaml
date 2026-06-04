@@ -222,7 +222,7 @@ document_templates:
       connections to existing knowledge, and questions raised.
     required_entities: [Bookmark, Topic]
 
-decision_traces:
+reasoning_traces:
   - id: knowledge_connection
     task: "Find meaningful connections between {{topic.name}} and other knowledge areas"
     steps:

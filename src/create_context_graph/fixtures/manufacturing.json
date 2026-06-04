@@ -1909,7 +1909,7 @@
   ],
   "traces": [
     {
-      "id": "production_scheduling",
+      "id": "9f872f50-8da2-50f9-a5fd-3831a5d6bc24",
       "task": "Determine optimal scheduling for work order WO-2024-005 on available production lines",
       "steps": [
         {
@@ -1936,7 +1936,7 @@
       "outcome": "Schedule work order WO-2024-1847 on Production Line B starting Wednesday morning, contingent on Tuesday delivery of component #M4-7821, to optimize delivery reliability while maintaining acceptable efficiency levels."
     },
     {
-      "id": "supplier_selection",
+      "id": "997761d3-57a1-5421-b265-28a1bd488de6",
       "task": "Select supplier for part ALM-1357-S given quality and lead time requirements",
       "steps": [
         {
@@ -1958,7 +1958,7 @@
       "outcome": "Selected Acme Manufacturing as primary supplier for part AL-BRK-2847 based on superior quality metrics and cost advantage, with Precision Parts Corp designated as secondary supplier for risk mitigation and expedited orders when needed."
     },
     {
-      "id": "defect_investigation",
+      "id": "eaee8cfc-964e-564f-83dd-ccec4c6af966",
       "task": "Investigate root cause of quality defects in Transmission Housing batch",
       "steps": [
         {

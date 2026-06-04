@@ -2160,7 +2160,7 @@
   ],
   "traces": [
     {
-      "id": "tournament_selection",
+      "id": "f361a86f-7bde-529b-9b31-e9bc995acbe6",
       "task": "Evaluate which tournament Tiger Woods should enter next",
       "steps": [
         {
@@ -2182,7 +2182,7 @@
       "outcome": "Tiger should enter the WM Phoenix Open due to the course setup favoring his current game style and the significant ranking point opportunity, despite the stronger field competition."
     },
     {
-      "id": "handicap_adjustment",
+      "id": "074fd97d-0548-5d9b-aed8-766359ec3500",
       "task": "Determine if Tiger Woods's handicap accurately reflects current ability",
       "steps": [
         {
@@ -2204,7 +2204,7 @@
       "outcome": "Tiger Woods's handicap index of 1.9 does not accurately reflect his current ability and should be lowered to approximately 0.5-0.7 based on consistent scoring patterns that demonstrate he's performing significantly better than his current rating suggests."
     },
     {
-      "id": "course_strategy",
+      "id": "2a9e1903-8efa-5f2c-8af5-f1e577fb07bf",
       "task": "Develop a course strategy for Emma Thompson at Pebble Beach Golf Links",
       "steps": [
         {

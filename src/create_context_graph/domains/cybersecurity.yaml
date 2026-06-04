@@ -276,7 +276,7 @@ document_templates:
       include indicators of compromise.
     required_entities: [Person, User, Alert]
 
-decision_traces:
+reasoning_traces:
   - id: alert_triage
     task: "Triage alert {{alert.name}} with severity {{alert.severity}}"
     steps:

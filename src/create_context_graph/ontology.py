@@ -71,20 +71,20 @@ class DocumentTemplateDef(BaseModel):
     required_entities: list[str] = Field(default_factory=list)
 
 
-class DecisionTraceStep(BaseModel):
-    """A step in a decision trace scenario."""
+class ReasoningTraceStep(BaseModel):
+    """A step in a reasoning trace scenario."""
 
     thought: str
     action: str
     observation: str | None = None
 
 
-class DecisionTraceDef(BaseModel):
-    """A decision trace scenario for generating reasoning memory."""
+class ReasoningTraceDef(BaseModel):
+    """A reasoning trace scenario for generating reasoning memory."""
 
     id: str
     task: str
-    steps: list[DecisionTraceStep] = Field(default_factory=list)
+    steps: list[ReasoningTraceStep] = Field(default_factory=list)
     outcome_template: str = ""
 
 
@@ -129,7 +129,7 @@ class DomainOntology(BaseModel):
     entity_types: list[EntityTypeDef] = Field(default_factory=list)
     relationships: list[RelationshipDef] = Field(default_factory=list)
     document_templates: list[DocumentTemplateDef] = Field(default_factory=list)
-    decision_traces: list[DecisionTraceDef] = Field(default_factory=list)
+    reasoning_traces: list[ReasoningTraceDef] = Field(default_factory=list)
     demo_scenarios: list[DemoScenario] = Field(default_factory=list)
     agent_tools: list[AgentToolDef] = Field(default_factory=list)
     visualization: VisualizationConfig = Field(default_factory=VisualizationConfig)
@@ -236,6 +236,13 @@ def _merge_base(base: dict, domain_data: dict) -> dict:
     return domain_data
 
 
+def _normalize_reasoning_traces(data: dict) -> dict:
+    """Accept legacy ``decision_traces`` YAML as native reasoning traces."""
+    if "reasoning_traces" not in data and "decision_traces" in data:
+        data["reasoning_traces"] = data.pop("decision_traces")
+    return data
+
+
 def load_domain(domain_id: str) -> DomainOntology:
     """Load a domain ontology by ID, merging with base definitions."""
     domains_dir = _get_domains_path()
@@ -256,6 +263,7 @@ def load_domain(domain_id: str) -> DomainOntology:
     data.pop("inherits", None)
     if "domain" in data and isinstance(data["domain"], dict):
         data["domain"].pop("inherits", None)
+    data = _normalize_reasoning_traces(data)
 
     return DomainOntology.model_validate(data)
 
@@ -278,6 +286,7 @@ def load_domain_from_yaml_string(yaml_content: str) -> DomainOntology:
     data.pop("inherits", None)
     if "domain" in data and isinstance(data["domain"], dict):
         data["domain"].pop("inherits", None)
+    data = _normalize_reasoning_traces(data)
 
     return DomainOntology.model_validate(data)
 
@@ -297,6 +306,7 @@ def load_domain_from_path(path: Path) -> DomainOntology:
     data.pop("inherits", None)
     if "domain" in data and isinstance(data["domain"], dict):
         data["domain"].pop("inherits", None)
+    data = _normalize_reasoning_traces(data)
 
     return DomainOntology.model_validate(data)
 
@@ -356,11 +366,11 @@ def generate_cypher_schema(ontology: DomainOntology) -> str:
         )
         lines.append("")
 
-    # Infrastructure indexes for Documents and Decision Traces
-    lines.append("// Infrastructure: Document and Decision Trace indexes")
+    # Infrastructure indexes for Documents. Reasoning traces are owned by
+    # neo4j-agent-memory and must not be modeled here.
+    lines.append("// Infrastructure: Document indexes")
     lines.append("CREATE INDEX document_title IF NOT EXISTS FOR (n:Document) ON (n.title);")
     lines.append("CREATE INDEX document_template_id IF NOT EXISTS FOR (n:Document) ON (n.template_id);")
-    lines.append("CREATE CONSTRAINT decision_trace_id_unique IF NOT EXISTS FOR (n:DecisionTrace) REQUIRE n.id IS UNIQUE;")
     lines.append("")
 
     # Local-file connector: constraints and indexes for Document + Section nodes

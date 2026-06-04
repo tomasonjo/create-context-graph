@@ -119,7 +119,7 @@ document_templates:
     prompt_template: "Generate a production log"
     required_entities: [Factory]
 
-decision_traces:
+reasoning_traces:
   - id: quality-decision
     task: Determine if widget passes quality check
     steps:

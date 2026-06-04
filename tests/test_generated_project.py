@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
+from pathlib import Path
 
 import pytest
 import yaml
@@ -261,7 +263,7 @@ class TestGeneratedFrontendFiles:
         components = [
             "ChatInterface.tsx",
             "ContextGraphView.tsx",
-            "DecisionTracePanel.tsx",
+            "ReasoningTracePanel.tsx",
             "Provider.tsx",
         ]
         for comp in components:
@@ -591,6 +593,15 @@ class TestGeneratedMemoryIntegration:
         assert "tool_calls" in routes
         assert "drain_tool_calls" in routes
 
+    def test_routes_record_chat_reasoning_traces(self, generated_project):
+        out, _ = generated_project
+        routes = (out / "backend" / "app" / "routes.py").read_text()
+        assert "_record_chat_reasoning_trace" in routes
+        assert "client.reasoning.start_trace" in routes
+        assert "client.reasoning.add_step" in routes
+        assert "client.reasoning.complete_trace" in routes
+        assert "await _record_chat_reasoning_trace" in routes
+
 
 class TestGeneratedFrontendSyntax:
     """Frontend files must have valid structure."""
@@ -598,7 +609,7 @@ class TestGeneratedFrontendSyntax:
     TSX_FILES = [
         "frontend/components/ChatInterface.tsx",
         "frontend/components/ContextGraphView.tsx",
-        "frontend/components/DecisionTracePanel.tsx",
+        "frontend/components/ReasoningTracePanel.tsx",
         "frontend/components/Provider.tsx",
         "frontend/app/layout.tsx",
         "frontend/app/page.tsx",
@@ -729,6 +740,12 @@ class TestGeneratedDataFiles:
         assert "relationships" in data
         assert "documents" in data
         assert "traces" in data
+
+    def test_reasoning_trace_ids_are_uuids(self, generated_project):
+        out, _ = generated_project
+        data = json.loads((out / "data" / "fixtures.json").read_text())
+        for trace in data.get("traces", []):
+            uuid.UUID(trace["id"])
 
     def test_documents_dir_exists(self, generated_project):
         out, _ = generated_project
@@ -1679,11 +1696,11 @@ class TestV052DomainFiltering:
         assert "DOMAIN_ID=" in env_content
 
     def test_routes_filter_documents_by_domain(self, generated_project):
-        """Document queries in routes.py should filter by domain."""
+        """Document queries filter by domain; traces use native memory APIs."""
         out, _ = generated_project
         routes_source = (out / "backend" / "app" / "routes.py").read_text()
         assert "d.domain" in routes_source, "Documents query should filter by domain"
-        assert "t.domain" in routes_source, "Traces query should filter by domain"
+        assert "list_reasoning_traces" in routes_source
 
     def test_routes_filter_entities_by_domain(self, generated_project):
         """Entity detail queries should filter by domain."""
@@ -1699,12 +1716,13 @@ class TestV052DomainFiltering:
         assert "settings.domain_id" in client_source
 
     def test_generate_data_tags_domain(self, generated_project):
-        """generate_data.py should tag entities with domain property."""
+        """generate_data.py tags graph records and seeds traces natively."""
         out, _ = generated_project
         gen_data = (out / "backend" / "scripts" / "generate_data.py").read_text()
         assert '"domain": settings.domain_id' in gen_data
         assert "d.domain = $domain" in gen_data
-        assert "t.domain = $domain" in gen_data
+        assert "client.reasoning.start_trace" in gen_data
+        assert "trace_session = f\"traces-{settings.domain_id}\"" in gen_data
 
 
 class TestV052FrameworkFixes:

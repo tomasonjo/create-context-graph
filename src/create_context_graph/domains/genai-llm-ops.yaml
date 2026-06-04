@@ -224,7 +224,7 @@ document_templates:
       and observed impact on output quality.
     required_entities: [Prompt, Experiment, Model]
 
-decision_traces:
+reasoning_traces:
   - id: model_promotion
     task: "Decide whether to promote model {{model.name}} from staging to production"
     steps:

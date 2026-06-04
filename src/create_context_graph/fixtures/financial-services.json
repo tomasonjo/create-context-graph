@@ -1886,7 +1886,7 @@
   ],
   "traces": [
     {
-      "id": "trade_execution",
+      "id": "ed6acd7b-410e-5938-be11-6868a6ee6b74",
       "task": "Evaluate whether to execute a large block trade of iShares Core US Aggregate Bond ETF for client Priya Sharma",
       "steps": [
         {
@@ -1913,7 +1913,7 @@
       "outcome": "Approved to execute the $500K block trade for AGG during the optimal 10:30-11:30 AM window, as all risk metrics remain within policy limits and market conditions support efficient execution with minimal price impact."
     },
     {
-      "id": "compliance_review",
+      "id": "9fac8704-4d53-5ec8-8ce8-e56fd8237d06",
       "task": "Review account ACC-2024-002001 for AML compliance flag",
       "steps": [
         {
@@ -1935,7 +1935,7 @@
       "outcome": "Account 4729-8851-3367 flagged for immediate AML investigation and temporary transaction monitoring due to multiple suspicious activity indicators including potential structuring, layering schemes, and undisclosed beneficial ownership relationships."
     },
     {
-      "id": "portfolio_rebalance",
+      "id": "5690e3b5-4e75-577c-a588-6a4bd9519741",
       "task": "Determine rebalancing strategy for Sarah Chen's portfolio",
       "steps": [
         {

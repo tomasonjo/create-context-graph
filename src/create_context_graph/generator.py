@@ -18,7 +18,7 @@ Five-stage pipeline:
 1. Entity seeding — Generate base entities from ontology
 2. Relationship weaving — Connect entities with domain relationships
 3. Document generation — LLM generates realistic business documents
-4. Decision trace injection — Generate reasoning traces
+4. Reasoning trace injection — Generate native reasoning traces
 5. Output — Write everything to fixtures JSON
 """
 
@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import random
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -442,7 +443,7 @@ def _generate_static_observation(
     domain_name: str,
     entities: dict[str, list[dict]] | None = None,
 ) -> str:
-    """Generate a realistic observation for a decision trace step."""
+    """Generate a realistic observation for a reasoning trace step."""
     # Pick a random entity name for context if available
     entity_ref = ""
     if entities:
@@ -550,16 +551,16 @@ def _interpolate_template_vars(text: str, entities: dict[str, list[dict]]) -> st
     return result
 
 
-def _generate_decision_traces(
+def _generate_reasoning_traces(
     ontology: DomainOntology,
     entities: dict[str, list[dict]],
     client=None,
     provider: str | None = None,
 ) -> list[dict]:
-    """Generate decision traces from ontology scenarios."""
+    """Generate reasoning traces from ontology scenarios."""
     traces = []
 
-    for trace_def in ontology.decision_traces:
+    for trace_def in ontology.reasoning_traces:
         # Fill in entity references in task description
         task = _interpolate_template_vars(trace_def.task, entities)
 
@@ -594,7 +595,10 @@ def _generate_decision_traces(
                 pass
 
         traces.append({
-            "id": trace_def.id,
+            "id": str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"create-context-graph:{ontology.domain.id}:reasoning-trace:{trace_def.id}",
+            )),
             "task": task,
             "steps": steps,
             "outcome": outcome,
@@ -647,10 +651,10 @@ def generate_fixture_data(
         documents = _generate_documents(ontology, entities, client, resolved_provider)
         progress.update(task, description=f"[3/4] Generated {len(documents)} documents")
 
-        # Stage 4: Decision traces
-        task = progress.add_task("[4/4] Creating decision traces...", total=None)
-        traces = _generate_decision_traces(ontology, entities, client, resolved_provider)
-        progress.update(task, description=f"[4/4] Created {len(traces)} decision traces")
+        # Stage 4: Reasoning traces
+        task = progress.add_task("[4/4] Creating reasoning traces...", total=None)
+        traces = _generate_reasoning_traces(ontology, entities, client, resolved_provider)
+        progress.update(task, description=f"[4/4] Created {len(traces)} reasoning traces")
 
     # Write output
     data = {
@@ -667,7 +671,7 @@ def generate_fixture_data(
     console.print(
         f"\n  [green]Generated:[/green] {entity_count} entities, "
         f"{len(relationships)} relationships, {len(documents)} documents, "
-        f"{len(traces)} decision traces"
+        f"{len(traces)} reasoning traces"
     )
     console.print(f"  [green]Written to:[/green] {output_path}")
 

@@ -2065,7 +2065,7 @@
   ],
   "traces": [
     {
-      "id": "source_credibility",
+      "id": "cf4c6397-0744-56fa-9486-d1f911d85875",
       "task": "Assess credibility of source Internal Audit Report 2023 for story Charter School Network Diverts Public Funds to Private Accounts",
       "steps": [
         {
@@ -2087,7 +2087,7 @@
       "outcome": "Source is assessed as highly credible with strong track record and independently verifiable claims, though potential conflict of interest from prior consulting relationship should be disclosed in the story. Proceeding with publication while noting the firm's previous business relationship."
     },
     {
-      "id": "publication_readiness",
+      "id": "9a05bb4c-8c7b-5997-af0d-96d17d6254a9",
       "task": "Determine if story Police Misconduct Cases Systematically Dismissed by District Attorney is ready for publication",
       "steps": [
         {
@@ -2114,7 +2114,7 @@
       "outcome": "Story is not ready for immediate publication - requires verification of 2 outstanding claims, correction of one calculation error, and revision of potentially problematic statement about the public official before proceeding."
     },
     {
-      "id": "claim_verification",
+      "id": "b598f540-f341-5206-8970-50aef24584a3",
       "task": "Verify claim: 'Renewable energy investments will create 100,000 new jobs' made by Energy Secretary",
       "steps": [
         {

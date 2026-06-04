@@ -341,7 +341,7 @@ document_templates:
       Include entry criteria, exit rules, position sizing, and risk management.
     required_entities: [Strategy, Regime]
 
-decision_traces:
+reasoning_traces:
   - id: trade_entry
     task: "Evaluate 0DTE trade entry on {{underlying.ticker}} given current dealer positioning"
     steps:

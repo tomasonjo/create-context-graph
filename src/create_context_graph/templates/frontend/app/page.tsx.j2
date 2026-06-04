@@ -17,7 +17,7 @@ const ContextGraphView = dynamic(
   }
 );
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { DecisionTracePanel } from "@/components/DecisionTracePanel";
+import { ReasoningTracePanel } from "@/components/ReasoningTracePanel";
 import { DocumentBrowser } from "@/components/DocumentBrowser";
 import { DOMAIN, API_BASE } from "@/lib/config";
 import type { GraphData } from "@/lib/config";
@@ -198,7 +198,7 @@ export default function Home() {
 
         <ResizeHandle onDrag={handleRightDrag} />
 
-        {/* Right panel: Decision traces + Documents */}
+        {/* Right panel: Reasoning traces + Documents */}
         <Box
           as="aside"
           aria-label="Details"
@@ -214,7 +214,7 @@ export default function Home() {
               <Tabs.Trigger value="documents">Documents</Tabs.Trigger>
             </Tabs.List>
             <Tabs.Content value="traces" p={0} h="calc(100dvh - 110px)" overflow="auto">
-              <DecisionTracePanel />
+              <ReasoningTracePanel />
             </Tabs.Content>
             <Tabs.Content value="documents" p={0} h="calc(100dvh - 110px)" overflow="auto">
               <DocumentBrowser />

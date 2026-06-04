@@ -2015,7 +2015,7 @@
   ],
   "traces": [
     {
-      "id": "species_intervention",
+      "id": "f1df9e18-2710-5dd1-919a-f3435c760c27",
       "task": "Evaluate whether to escalate conservation intervention for African Elephant at Maasai Mara National Reserve",
       "steps": [
         {
@@ -2042,7 +2042,7 @@
       "outcome": "Escalate conservation intervention immediately by deploying enhanced anti-poaching units and establishing community-based conflict mitigation programs, given the significant population decline trend and available resources to implement effective countermeasures."
     },
     {
-      "id": "funding_allocation",
+      "id": "3ac330a6-a041-5dc8-9e02-d856ff0ba152",
       "task": "Determine allocation of Global Wildlife Foundation Grant across conservation programs",
       "steps": [
         {
@@ -2064,7 +2064,7 @@
       "outcome": "The $5M Global Wildlife Foundation Grant will be allocated as follows: $2.2M to Sumatran Tiger Protection Program (highest threat level with strong co-funding), $1.8M to Marine Turtle Recovery Initiative (proven effectiveness with excellent matching funds), and $1M to Forest Elephant Anti-Poaching Program (moderate threat but critical intervention window)."
     },
     {
-      "id": "site_protection",
+      "id": "f08715e9-9b38-5868-8ff9-f635bcda039f",
       "task": "Assess whether to expand protection level for Osa Peninsula Wildlife Refuge",
       "steps": [
         {
