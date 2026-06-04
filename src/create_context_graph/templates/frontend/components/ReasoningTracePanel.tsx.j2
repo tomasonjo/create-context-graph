@@ -1,7 +1,7 @@
 {% raw %}"use client";
 
 import { useState, useEffect } from "react";
-import { Box, Heading, Text, VStack, HStack, Badge, Flex } from "@chakra-ui/react";
+import { Box, Heading, Text, VStack, HStack, Badge, Flex, Dialog, Portal, CloseButton } from "@chakra-ui/react";
 import { GitBranch, Brain, Wrench, Eye } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
@@ -116,55 +116,105 @@ export function ReasoningTracePanel() {
         )}
       </VStack>
 
-      {/* Selected trace detail */}
-      {selectedTrace && (
-        <Box
-          borderTop="1px solid"
-          borderColor="gray.200"
-          px={4}
-          py={3}
-          maxH="50%"
-          overflow="auto"
-        >
-          <Text fontSize="sm" fontWeight="bold" mb={2}>
-            {selectedTrace.task}
-          </Text>
-          <VStack gap={3} align="stretch">
-            {selectedTrace.steps.map((step, i) => (
-              <Box key={`step-${i}-${(step.action || "").slice(0, 32)}`} pl={3} borderLeft="2px solid" borderColor="blue.200">
-                <HStack>
-                  <Brain size={12} />
-                  <Text fontSize="xs" color="gray.600">
-                    {step.thought}
-                  </Text>
+      {/* Selected trace detail — opens in a centered modal */}
+      <Dialog.Root
+        open={!!selectedTrace}
+        onOpenChange={(e) => {
+          if (!e.open) setSelectedTrace(null);
+        }}
+        size="lg"
+        scrollBehavior="inside"
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content>
+              <Dialog.CloseTrigger asChild>
+                <CloseButton size="sm" />
+              </Dialog.CloseTrigger>
+              <Dialog.Header>
+                <HStack gap={2}>
+                  <GitBranch size={16} />
+                  <Dialog.Title fontSize="sm">{selectedTrace?.task}</Dialog.Title>
                 </HStack>
-                <HStack mt={1}>
-                  <Wrench size={12} />
-                  <Text fontSize="xs" fontFamily="mono">
-                    {step.action}
-                  </Text>
-                </HStack>
-                {step.observation && (
-                  <HStack mt={1}>
-                    <Eye size={12} />
-                    <Text fontSize="xs" color="green.700">
-                      {step.observation}
-                    </Text>
-                  </HStack>
+              </Dialog.Header>
+              <Dialog.Body pb={6}>
+                {selectedTrace && (
+                  <>
+                    <VStack gap={3} align="stretch">
+                      {selectedTrace.steps.map((step, i) => (
+                        <Box
+                          key={`step-${i}-${(step.action || "").slice(0, 32)}`}
+                          pl={3}
+                          borderLeft="2px solid"
+                          borderColor="blue.200"
+                        >
+                          <HStack align="flex-start" gap={2}>
+                            <Box mt="2px" flexShrink={0}>
+                              <Brain size={12} />
+                            </Box>
+                            <Text fontSize="xs" color="gray.600">
+                              {step.thought}
+                            </Text>
+                          </HStack>
+                          <HStack align="flex-start" gap={2} mt={1}>
+                            <Box mt="2px" flexShrink={0}>
+                              <Wrench size={12} />
+                            </Box>
+                            <Box
+                              as="pre"
+                              flex={1}
+                              fontSize="xs"
+                              fontFamily="mono"
+                              whiteSpace="pre-wrap"
+                              wordBreak="break-word"
+                              bg="gray.50"
+                              px={2}
+                              py={1}
+                              borderRadius="sm"
+                            >
+                              {step.action}
+                            </Box>
+                          </HStack>
+                          {step.observation && (
+                            <HStack align="flex-start" gap={2} mt={1}>
+                              <Box mt="2px" flexShrink={0}>
+                                <Eye size={12} />
+                              </Box>
+                              <Text
+                                fontSize="xs"
+                                color="green.700"
+                                whiteSpace="pre-wrap"
+                                wordBreak="break-word"
+                              >
+                                {step.observation}
+                              </Text>
+                            </HStack>
+                          )}
+                        </Box>
+                      ))}
+                    </VStack>
+                    {selectedTrace.outcome && (
+                      <Box mt={4} p={2} bg="green.50" borderRadius="md">
+                        <Text fontSize="xs" fontWeight="bold">
+                          Outcome:
+                        </Text>
+                        <Text
+                          fontSize="xs"
+                          whiteSpace="pre-wrap"
+                          wordBreak="break-word"
+                        >
+                          {selectedTrace.outcome}
+                        </Text>
+                      </Box>
+                    )}
+                  </>
                 )}
-              </Box>
-            ))}
-          </VStack>
-          {selectedTrace.outcome && (
-            <Box mt={3} p={2} bg="green.50" borderRadius="md">
-              <Text fontSize="xs" fontWeight="bold">
-                Outcome:
-              </Text>
-              <Text fontSize="xs">{selectedTrace.outcome}</Text>
-            </Box>
-          )}
-        </Box>
-      )}
+              </Dialog.Body>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
     </Flex>
   );
 }

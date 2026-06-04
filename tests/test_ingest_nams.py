@@ -329,10 +329,18 @@ class TestIngestDataDispatch:
         captured = capsys.readouterr()
         assert "Fixture file not found" in captured.out
 
-    def test_bolt_path_calls_neo4j_via_memory_client(
+    def test_bolt_path_writes_cypher_and_reasoning_traces(
         self, tmp_path, healthcare_ontology, monkeypatch
     ):
-        """Bolt path delegates to the existing _ingest_with_memory_client path."""
+        """Bolt path delegates to _ingest_with_memory_client, which writes
+        schema/relationships/documents via direct Cypher (``graph.execute_write``)
+        and reasoning traces through the unified ``reasoning.*`` API.
+
+        Since the "switch to reasoning traces" change, trace ingestion is
+        unified across bolt + NAMS — both backends call
+        ``reasoning.start_trace/add_step/complete_trace`` rather than writing
+        ``DecisionTrace``/``TraceStep`` Cypher nodes.
+        """
         fixture = _make_fixture_file(tmp_path)
         cfg = ProjectConfig(
             project_name="x",
@@ -353,9 +361,12 @@ class TestIngestDataDispatch:
 
         ingest_data(fixture, healthcare_ontology, cfg)
 
-        # Should NOT have hit the NAMS-shaped reasoning API on this path
-        assert bolt_client.reasoning.start_trace.await_count == 0
-        # SHOULD have hit graph.execute_write (schema + rels + docs + traces)
+        # Reasoning traces go through the reasoning.* API on the bolt path too —
+        # the fixture has 1 trace with 2 steps.
+        assert bolt_client.reasoning.start_trace.await_count == 1
+        assert bolt_client.reasoning.add_step.await_count == 2
+        assert bolt_client.reasoning.complete_trace.await_count == 1
+        # Schema, relationships, and documents still go through direct Cypher.
         assert bolt_client.graph.execute_write.await_count > 0
 
     def test_legacy_bolt_signature_still_dispatches(

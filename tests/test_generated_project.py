@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from pathlib import Path
 
 import pytest
 import yaml
@@ -602,6 +601,133 @@ class TestGeneratedMemoryIntegration:
         assert "client.reasoning.complete_trace" in routes
         assert "await _record_chat_reasoning_trace" in routes
 
+    def test_tool_rationale_summarizes_parameters_not_query(self, generated_project):
+        """The fallback rationale reads the bound `parameters` from the nested
+        {query, parameters} inputs — the verbose Cypher is shown in the step
+        action, so it isn't dumped into the rationale prose too."""
+        out, _ = generated_project
+        routes = (out / "backend" / "app" / "routes.py").read_text()
+        assert 'inputs.get("parameters")' in routes
+
+
+class TestReasoningTraceThinkingCapture:
+    """The Anthropic-native agents capture real thinking blocks for traces.
+
+    The reasoning-trace step ``thought`` should be the model's own extended-
+    thinking output, not the templated ``_public_tool_rationale`` fallback.
+    """
+
+    # Raw-Anthropic agents: pending-thought → tool-call mechanism.
+    THINKING_FRAMEWORKS = ["anthropic-tools", "claude-agent-sdk"]
+    # All agents that capture real thinking (incl. PydanticAI's post-hoc path).
+    ALL_THINKING_FRAMEWORKS = THINKING_FRAMEWORKS + ["pydanticai"]
+
+    def _render_agent(self, tmp_path, framework):
+        config = ProjectConfig(
+            project_name=f"thinking-{framework}",
+            domain="healthcare",
+            framework=framework,
+        )
+        out = tmp_path / f"thinking-{framework}"
+        ProjectRenderer(config, load_domain("healthcare")).render(out)
+        return out
+
+    @pytest.mark.parametrize("framework", THINKING_FRAMEWORKS)
+    def test_agent_enables_and_captures_thinking(self, tmp_path, framework):
+        out = self._render_agent(tmp_path, framework)
+        agent = (out / "backend" / "app" / "agent.py").read_text()
+        # Extended thinking is configured and conditionally attached to calls.
+        assert "_thinking_config" in agent
+        assert "_THINKING" in agent
+        assert '"thinking"] = _THINKING' in agent
+        # The model's thinking blocks are extracted and recorded on the collector.
+        assert "_extract_thinking" in agent
+        assert "collector.record_thinking" in agent
+        assert "get_collector" in agent
+        compile(agent, "agent.py", "exec")
+
+    @pytest.mark.parametrize("framework", ALL_THINKING_FRAMEWORKS)
+    def test_thinking_disable_switch_is_present(self, tmp_path, framework):
+        """ANTHROPIC_THINKING env var lets operators turn the feature off."""
+        out = self._render_agent(tmp_path, framework)
+        agent = (out / "backend" / "app" / "agent.py").read_text()
+        assert "ANTHROPIC_THINKING" in agent
+        assert "ANTHROPIC_THINKING_BUDGET" in agent
+
+    def test_pydanticai_captures_thinking(self, tmp_path):
+        """PydanticAI enables Anthropic thinking and reconstructs trace thoughts.
+
+        Its tool loop is internal to ``agent.run()``, so it enables thinking via
+        model settings and pairs ``ThinkingPart``s with tool calls afterwards
+        (rather than the raw-Anthropic pending-thought mechanism).
+        """
+        out = self._render_agent(tmp_path, "pydanticai")
+        agent = (out / "backend" / "app" / "agent.py").read_text()
+        assert "_thinking_config" in agent
+        assert "anthropic_thinking" in agent
+        assert "_MODEL_SETTINGS" in agent
+        assert "model_settings=_MODEL_SETTINGS" in agent
+        assert "_capture_run_thinking" in agent
+        assert "ThinkingPart" in agent
+        assert "ToolCallPart" in agent
+        # Thoughts land on collected tool calls and the no-tool reasoning path.
+        assert 'tc["thought"]' in agent
+        assert "collector.record_thinking" in agent
+        compile(agent, "agent.py", "exec")
+
+    def test_collector_records_thinking_on_tool_calls(self, generated_project):
+        out, _ = generated_project
+        client = (out / "backend" / "app" / "context_graph_client.py").read_text()
+        assert "def record_thinking" in client
+        assert "def drain_thinking" in client
+        # The pending thought is attached to each collected tool call.
+        assert '"thought": self._pending_thought' in client
+
+    def test_routes_prefer_captured_thought(self, generated_project):
+        out, _ = generated_project
+        routes = (out / "backend" / "app" / "routes.py").read_text()
+        # Step thought comes from the captured thinking, falling back to the
+        # templated rationale only when none was captured.
+        assert 'call.get("thought")' in routes
+        assert "reasoning_steps" in routes
+        assert "drain_thinking()" in routes
+
+    @pytest.mark.parametrize("framework", ALL_THINKING_FRAMEWORKS)
+    def test_interleaved_thinking_enabled(self, tmp_path, framework):
+        """Interleaved thinking makes the model reason before each tool call,
+        so reasoning-trace steps get distinct thoughts instead of one repeated."""
+        out = self._render_agent(tmp_path, framework)
+        agent = (out / "backend" / "app" / "agent.py").read_text()
+        assert "interleaved-thinking-2025-05-14" in agent
+
+    @pytest.mark.parametrize("framework", THINKING_FRAMEWORKS)
+    def test_raw_anthropic_streams_thinking_on_its_own_channel(self, tmp_path, framework):
+        """claude-agent-sdk / anthropic-tools surface thinking deltas separately
+        from answer text so the UI can render reasoning distinctly."""
+        out = self._render_agent(tmp_path, framework)
+        agent = (out / "backend" / "app" / "agent.py").read_text()
+        assert "emit_thinking_delta" in agent
+        assert 'hasattr(event.delta, "thinking")' in agent
+
+    def test_collector_emits_thinking_delta(self, generated_project):
+        out, _ = generated_project
+        client = (out / "backend" / "app" / "context_graph_client.py").read_text()
+        assert "def emit_thinking_delta" in client
+        assert '"thinking_delta"' in client
+
+    def test_chat_interface_renders_thinking_channel(self, generated_project):
+        """ChatInterface handles the thinking_delta event and renders reasoning
+        as its own block, interleaved with tool calls in one ordered timeline
+        (not merged into a single block)."""
+        out, _ = generated_project
+        chat = (out / "frontend" / "components" / "ChatInterface.tsx").read_text()
+        assert 'case "thinking_delta"' in chat
+        # Reasoning + tools share one ordered timeline; thinking is a step kind.
+        assert "streamingSteps" in chat
+        assert "ReasoningTimeline" in chat
+        assert 'kind: "thinking"' in chat
+        assert "Reasoning" in chat
+
 
 class TestGeneratedFrontendSyntax:
     """Frontend files must have valid structure."""
@@ -1057,6 +1183,19 @@ class TestCollectorEventQueue:
         out, _ = generated_project
         client = (out / "backend" / "app" / "context_graph_client.py").read_text()
         assert "import asyncio" in client
+
+    def test_execute_cypher_captures_query_in_tool_inputs(self, generated_project):
+        """execute_cypher surfaces the actual Cypher (not just bound params) in
+        the tool-call inputs, so the chat timeline and reasoning traces show
+        what really ran. Domain tools bind their query internally — params alone
+        are often just {domain}."""
+        out, _ = generated_project
+        client = (out / "backend" / "app" / "context_graph_client.py").read_text()
+        assert '"query": query' in client
+        assert "tool_inputs" in client
+        assert "emit_tool_start(tool_name, tool_inputs)" in client
+        # The legacy params-only inputs must be gone from both emit and collect.
+        assert "emit_tool_start(tool_name, parameters or {})" not in client
 
 
 class TestStreamingAgentTemplates:

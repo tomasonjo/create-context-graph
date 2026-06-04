@@ -59,10 +59,22 @@ def _format_trace_value(value: object, limit: int = 1200) -> str:
 
 
 def _public_tool_rationale(tool_name: str, inputs: dict, message: str) -> str:
-    """Summarize why a tool was used from observable inputs only."""
+    """Summarize why a tool was used from observable inputs only.
+
+    Fallback rationale for frameworks (or turns) where the model did not emit
+    an extended-thinking block. When thinking is captured, the model's own
+    words are used as the step thought instead.
+    """
     request = _truncate_trace_text(message, 700)
+    # ``inputs`` now carries {"query", "parameters"}; summarize the bound
+    # parameters — the Cypher itself is shown in the step action, so we don't
+    # repeat it in the prose. Fall back to the whole mapping for callers that
+    # still pass a flat inputs dict.
+    params = inputs.get("parameters")
+    if not isinstance(params, dict):
+        params = inputs
     key_bits = []
-    for key, value in list(inputs.items())[:4]:
+    for key, value in list(params.items())[:4]:
         key_bits.append(f"{key}={_format_trace_value(value, 240)}")
     scoped_inputs = f" using {', '.join(key_bits)}" if key_bits else ""
 
@@ -84,12 +96,16 @@ async def _record_chat_reasoning_trace(
     message: str,
     response_text: str,
     tool_calls: list[dict] | None,
+    reasoning_steps: list[str] | None = None,
     success: bool = True,
 ) -> None:
     """Persist one native reasoning trace for a chat turn.
 
-    We only record observable steps: tool names, inputs, and summarized
-    outputs. The model's private reasoning is never inferred or stored.
+    Each step's ``thought`` is the model's own reasoning — the extended-thinking
+    block captured by the agent for that iteration (``call["thought"]`` for tool
+    steps, ``reasoning_steps`` for a tool-less answer). When no thinking was
+    captured (framework doesn't expose it, or thinking is disabled), we fall back
+    to a rationale summarized from the observable tool inputs.
     """
     try:
         from app.memory import get_client
@@ -106,13 +122,26 @@ async def _record_chat_reasoning_trace(
 
         calls = tool_calls or []
         if calls:
+            previous_thought = None
             for call in calls:
                 name = str(call.get("name") or "tool")
                 inputs_raw = call.get("inputs") or {}
                 inputs = inputs_raw if isinstance(inputs_raw, dict) else {}
+                thought = _truncate_trace_text(call.get("thought") or "")
+                if not thought:
+                    thought = _public_tool_rationale(name, inputs, message)
+                # Parallel tool calls in a single model turn share one reasoning
+                # block (the same captured thought is stamped on each). Record the
+                # reasoning once and mark the siblings, so the trace doesn't repeat
+                # the same thought on every step.
+                if thought == previous_thought:
+                    step_thought = "Parallel tool call — continues the reasoning above."
+                else:
+                    step_thought = thought
+                    previous_thought = thought
                 await client.reasoning.add_step(
                     trace_id=trace_id,
-                    thought=_public_tool_rationale(name, inputs, message),
+                    thought=step_thought,
                     action=_truncate_trace_text(
                         f"{name} inputs={_format_trace_value(inputs, 1600)}", 2000
                     ),
@@ -121,9 +150,15 @@ async def _record_chat_reasoning_trace(
                     ),
                 )
         else:
+            captured = [s for s in (reasoning_steps or []) if s]
+            thought = (
+                _truncate_trace_text("\n\n".join(captured))
+                if captured
+                else "Answer using available conversation and memory context."
+            )
             await client.reasoning.add_step(
                 trace_id=trace_id,
-                thought="Answer using available conversation and memory context.",
+                thought=thought,
                 action="respond",
                 observation=_truncate_trace_text(response_text or "No response generated."),
             )
@@ -187,6 +222,7 @@ async def chat(request: ChatRequest):
         collector = get_collector()
         collector.drain()  # clear stale results
         collector.drain_tool_calls()  # clear stale tool calls
+        collector.drain_thinking()  # clear stale reasoning
         result = await handle_message(request.message, request.session_id)
         # Attach graph data from tool calls if agent didn't provide any
         if result.get("graph_data") is None:
@@ -202,16 +238,19 @@ async def chat(request: ChatRequest):
             message=request.message,
             response_text=result.get("response", ""),
             tool_calls=tool_calls,
+            reasoning_steps=collector.drain_thinking(),
             success=True,
         )
         return result
     except Exception as e:
         try:
+            failed_collector = get_collector()
             await _record_chat_reasoning_trace(
                 session_id=request.session_id or "failed-chat",
                 message=request.message,
                 response_text=str(e),
-                tool_calls=get_collector().drain_tool_calls(),
+                tool_calls=failed_collector.drain_tool_calls(),
+                reasoning_steps=failed_collector.drain_thinking(),
                 success=False,
             )
         except Exception:
@@ -228,6 +267,7 @@ async def chat_stream(request: ChatRequest):
       - tool_start: {name, inputs}
       - tool_end:   {name, output_preview, graph_data}
       - text_delta: {text}
+      - thinking_delta: {text}
       - entities_extracted: {entities}
       - preferences_detected: {preferences}
       - done:       {response}
@@ -239,6 +279,7 @@ async def chat_stream(request: ChatRequest):
     collector = get_collector()
     collector.drain()
     collector.drain_tool_calls()
+    collector.drain_thinking()
 
     event_queue: asyncio.Queue = asyncio.Queue()
     collector.set_event_queue(event_queue)
@@ -262,6 +303,7 @@ async def chat_stream(request: ChatRequest):
                     message=request.message,
                     response_text=response_text,
                     tool_calls=collector.drain_tool_calls(),
+                    reasoning_steps=collector.drain_thinking(),
                     success=True,
                 )
                 collector.emit_done(response_text, session_id)
@@ -271,6 +313,7 @@ async def chat_stream(request: ChatRequest):
                 message=request.message,
                 response_text=response_text,
                 tool_calls=collector.drain_tool_calls(),
+                reasoning_steps=collector.drain_thinking(),
                 success=True,
             )
         except Exception as e:
@@ -279,6 +322,7 @@ async def chat_stream(request: ChatRequest):
                 message=request.message,
                 response_text=str(e),
                 tool_calls=collector.drain_tool_calls(),
+                reasoning_steps=collector.drain_thinking(),
                 success=False,
             )
             try:

@@ -180,6 +180,7 @@ def _import_app(backend_dir: Path, *, backend: str, fake_client):
     class _Collector:
         def drain(self): return []
         def drain_tool_calls(self): return []
+        def drain_thinking(self): return []
         def set_event_queue(self, q): pass
         def clear_event_queue(self): pass
         def emit_text_delta(self, t): pass
@@ -456,7 +457,13 @@ class TestBoltRoutes:
         class _Collector:
             def drain(self): return []
             def drain_tool_calls(self):
-                return [{"name": "search_patient", "inputs": {"query": "Alice"}, "output_preview": "[]"}]
+                return [{
+                    "name": "search_patient",
+                    "inputs": {"query": "Alice"},
+                    "output_preview": "[]",
+                    "thought": "I should look up Alice in the patient records.",
+                }]
+            def drain_thinking(self): return []
             def set_event_queue(self, q): pass
             def clear_event_queue(self): pass
             def emit_text_delta(self, t): pass
@@ -477,6 +484,96 @@ class TestBoltRoutes:
         client.reasoning.start_trace.assert_awaited_once()
         client.reasoning.add_step.assert_awaited_once()
         client.reasoning.complete_trace.assert_awaited_once()
+        # The model's captured thinking — not the templated fallback — is the
+        # recorded thought for the tool step.
+        step_kwargs = client.reasoning.add_step.await_args.kwargs
+        assert step_kwargs["thought"] == "I should look up Alice in the patient records."
+
+    def test_chat_step_falls_back_to_rationale_without_thinking(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="bolt")
+        client = _fake_client()
+        app, _, cgc = _import_app(backend_dir, backend="bolt", fake_client=client)
+
+        class _Collector:
+            def drain(self): return []
+            def drain_tool_calls(self):
+                # No "thought" key — simulates a framework that doesn't emit thinking.
+                return [{"name": "search_patient", "inputs": {"query": "Bob"}, "output_preview": "[]"}]
+            def drain_thinking(self): return []
+            def set_event_queue(self, q): pass
+            def clear_event_queue(self): pass
+            def emit_text_delta(self, t): pass
+            def emit_done(self, t, s): pass
+            def emit_entities_extracted(self, e): pass
+            def emit_preferences_detected(self, p): pass
+
+        collector = _Collector()
+        cgc.get_collector = MagicMock(return_value=collector)
+        sys.modules["app.context_graph_client"].get_collector = cgc.get_collector
+        import app.routes as routes_mod
+        routes_mod.get_collector = cgc.get_collector
+
+        with TestClient(app) as tc:
+            r = tc.post("/api/chat", json={"message": "Find Bob", "session_id": "s-2"})
+            assert r.status_code == 200
+
+        client.reasoning.add_step.assert_awaited_once()
+        step_kwargs = client.reasoning.add_step.await_args.kwargs
+        # Falls back to the inputs-derived rationale.
+        assert "search patient" in step_kwargs["thought"]
+        assert "Find Bob" in step_kwargs["thought"]
+
+    def test_parallel_tool_calls_dont_repeat_thought(self, tmp_path):
+        """Parallel tool calls in one model turn share a single reasoning block.
+        The captured thought is stamped on each, so the trace must record it once
+        and mark the siblings instead of repeating it."""
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="bolt")
+        client = _fake_client()
+        app, _, cgc = _import_app(backend_dir, backend="bolt", fake_client=client)
+
+        shared = "Let me check the schema and count referrals in parallel."
+
+        class _Collector:
+            def drain(self): return []
+            def drain_tool_calls(self):
+                # Two parallel calls from one turn carry the SAME thought.
+                return [
+                    {"name": "execute_cypher", "inputs": {"query": "MATCH (a) RETURN a"},
+                     "output_preview": "[]", "thought": shared},
+                    {"name": "execute_cypher", "inputs": {"query": "MATCH ()-[r]->() RETURN count(r)"},
+                     "output_preview": "[{'c': 12}]", "thought": shared},
+                ]
+            def drain_thinking(self): return []
+            def set_event_queue(self, q): pass
+            def clear_event_queue(self): pass
+            def emit_text_delta(self, t): pass
+            def emit_done(self, t, s): pass
+            def emit_entities_extracted(self, e): pass
+            def emit_preferences_detected(self, p): pass
+
+        collector = _Collector()
+        cgc.get_collector = MagicMock(return_value=collector)
+        sys.modules["app.context_graph_client"].get_collector = cgc.get_collector
+        import app.routes as routes_mod
+        routes_mod.get_collector = cgc.get_collector
+
+        with TestClient(app) as tc:
+            r = tc.post("/api/chat", json={"message": "referral patterns", "session_id": "s-par"})
+            assert r.status_code == 200
+
+        assert client.reasoning.add_step.await_count == 2
+        thoughts = [c.kwargs["thought"] for c in client.reasoning.add_step.await_args_list]
+        # First step keeps the real reasoning; the parallel sibling does NOT repeat it.
+        assert thoughts[0] == shared
+        assert thoughts[1] != shared
+        assert "parallel" in thoughts[1].lower()
+        # Each step still records its own distinct action (the actual query run).
+        actions = [c.kwargs["action"] for c in client.reasoning.add_step.await_args_list]
+        assert "count(r)" in actions[1]
 
     def test_documents_uses_cypher_path_on_bolt(self, tmp_path):
         from fastapi.testclient import TestClient

@@ -33,6 +33,11 @@ class CypherResultCollector:
     def __init__(self):
         self.results: list[dict] = []
         self.tool_calls: list[dict] = []
+        # Model reasoning ("thinking") captured this turn, in order. The most
+        # recent entry is attached to subsequent tool calls as their rationale
+        # so reasoning traces show the model's own words, not a template.
+        self.reasoning_steps: list[str] = []
+        self._pending_thought: str = ""
         self._event_queue: asyncio.Queue | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -84,6 +89,11 @@ class CypherResultCollector:
         """Emit a text_delta SSE event."""
         self._push_event("text_delta", {"text": text})
 
+    def emit_thinking_delta(self, text: str) -> None:
+        """Emit a thinking_delta SSE event (model reasoning, shown separately)."""
+        if text:
+            self._push_event("thinking_delta", {"text": text})
+
     def emit_done(self, response_text: str, session_id: str = "") -> None:
         """Emit a done SSE event."""
         self._push_event("done", {"response": response_text, "session_id": session_id})
@@ -103,11 +113,25 @@ class CypherResultCollector:
     def collect(self, records: list[dict]) -> None:
         self.results.extend(records)
 
+    def record_thinking(self, text: str) -> None:
+        """Record a model reasoning ("thinking") block for the current turn.
+
+        Stores the text as the pending rationale for the next tool call(s) and
+        appends it to the ordered reasoning log. Internal state only — no SSE
+        event is emitted, so the visible chat stream is unaffected.
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        self._pending_thought = text
+        self.reasoning_steps.append(text)
+
     def collect_tool_call(self, name: str, inputs: dict, output_preview: str = "") -> None:
         self.tool_calls.append({
             "name": name,
             "inputs": inputs,
             "output_preview": output_preview[:500],
+            "thought": self._pending_thought,
         })
         # Emit tool_end SSE event with the graph data collected so far
         self._push_event("tool_end", {
@@ -126,6 +150,13 @@ class CypherResultCollector:
         calls = list(self.tool_calls)
         self.tool_calls.clear()
         return calls
+
+    def drain_thinking(self) -> list[str]:
+        """Return and clear the reasoning ("thinking") blocks for this turn."""
+        steps = list(self.reasoning_steps)
+        self.reasoning_steps.clear()
+        self._pending_thought = ""
+        return steps
 
 
 _collector = CypherResultCollector()
@@ -211,8 +242,13 @@ async def execute_cypher(
 ) -> list[dict]:
     """Execute a Cypher query and return results as dicts with graph metadata."""
     driver = get_driver()
+    # Surface the actual Cypher alongside the bound parameters in the tool-call
+    # inputs, so the chat tool timeline and reasoning traces show what really
+    # ran. Domain tools bind their query internally, so `parameters` alone is
+    # often just {"domain": ...} — uninformative without the query.
+    tool_inputs = {"query": query, "parameters": parameters or {}}
     if tool_name and collect:
-        _collector.emit_tool_start(tool_name, parameters or {})
+        _collector.emit_tool_start(tool_name, tool_inputs)
     async with driver.session() as session:
         result = await session.run(query, parameters or {}, timeout=timeout)
         records = []
@@ -222,7 +258,7 @@ async def execute_cypher(
             _collector.collect(records)
             if tool_name:
                 _collector.collect_tool_call(
-                    tool_name, parameters or {}, str(records[:2])
+                    tool_name, tool_inputs, str(records[:2])
                 )
         return records
 

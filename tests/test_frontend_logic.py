@@ -289,8 +289,8 @@ class TestSSEContractValidation:
         # Also pick up the docstring listing the canonical event types.
         docstring_events = set(re.findall(r"- (\w+):", self.routes_src))
         # Filter to known event names only
-        known = {"session_id", "tool_start", "tool_end", "text_delta", "done", "error",
-                 "entities_extracted", "preferences_detected"}
+        known = {"session_id", "tool_start", "tool_end", "text_delta", "thinking_delta",
+                 "done", "error", "entities_extracted", "preferences_detected"}
         return (literal_events | docstring_events) & known
 
     def _extract_frontend_event_types(self) -> set[str]:
@@ -496,8 +496,10 @@ class TestCompositeKeyRegressions:
 
     def test_chat_interface_tool_call_key_is_composite(self):
         src = CHAT_TEMPLATE.read_text()
-        assert "key={`${tc.name}-${j}`}" in src, (
-            "tool call timeline key must be `${tc.name}-${j}`"
+        # Tool steps live in the unified ReasoningTimeline; the key is composite
+        # (ordinal + tool name), not a bare array index.
+        assert "key={`tool-${idx}-${tc.name}`}" in src, (
+            "tool step key must be `tool-${idx}-${tc.name}`"
         )
 
     def test_reasoning_trace_step_key_is_composite(self):
@@ -520,3 +522,162 @@ class TestCompositeKeyRegressions:
         assert "key={`${e.name}-${i}`}" not in src, (
             "DocumentBrowser still uses the legacy index-tainted key"
         )
+
+
+class TestReasoningTraceModal:
+    """Clicking a reasoning trace opens a centered modal dialog (not the old
+    cramped bottom-docked detail box inside the narrow right panel)."""
+
+    def test_panel_uses_dialog_modal(self):
+        src = REASONING_TRACE_TEMPLATE.read_text()
+        # Chakra v3 Dialog (modal) primitives are present...
+        assert "Dialog.Root" in src
+        assert "Dialog.Backdrop" in src
+        assert "Dialog.Content" in src
+        assert "Dialog.Body" in src
+        # ...imported from Chakra...
+        assert "Dialog" in src.split("from \"@chakra-ui/react\"")[0]
+
+    def test_modal_is_controlled_by_selected_trace(self):
+        src = REASONING_TRACE_TEMPLATE.read_text()
+        # The dialog opens when a trace is selected and clears it on close.
+        assert "open={!!selectedTrace}" in src
+        assert "onOpenChange" in src
+        assert "setSelectedTrace(null)" in src
+
+    def test_legacy_inline_detail_box_is_gone(self):
+        """The previous detail box was a bottom-docked panel (maxH 50% with a
+        top border) — it must be replaced by the modal."""
+        src = REASONING_TRACE_TEMPLATE.read_text()
+        assert 'maxH="50%"' not in src, (
+            "ReasoningTracePanel still renders the inline bottom detail box"
+        )
+
+
+class TestToolTimelineShowsCypher:
+    """The chat tool-call timeline surfaces the actual Cypher query, not just
+    the bound parameters (which for domain tools are often only {domain})."""
+
+    def test_tool_timeline_reads_query_from_inputs(self):
+        src = CHAT_TEMPLATE.read_text()
+        # execute_cypher now reports inputs as {query, parameters}; the timeline
+        # must read the query off the inputs to display it.
+        assert "tc.inputs.query" in src
+        assert "tc.inputs.parameters" in src
+
+    def test_tool_start_handler_still_carries_inputs(self):
+        """The query is delivered via the existing `inputs` field, so the
+        tool_start SSE handler must keep storing data.inputs (contract)."""
+        src = CHAT_TEMPLATE.read_text()
+        assert "data.inputs" in src
+
+
+# ---------------------------------------------------------------------------
+# Interleaved reasoning steps (thinking blocks split around tool calls)
+# ---------------------------------------------------------------------------
+
+def build_reasoning_steps(events: list[tuple[str, dict]]) -> list[dict]:
+    """Python port of ChatInterface's streaming step-building.
+
+    Mirrors the SSE handlers: a thinking_delta appends to the open thinking
+    block, or starts a NEW block if a tool ran since the last reasoning;
+    tool_start pushes a running tool; tool_end completes the matching one.
+    """
+    steps: list[dict] = []
+    for etype, data in events:
+        if etype == "tool_start":
+            steps.append({"kind": "tool", "tool": {"name": data["name"], "status": "running"}})
+        elif etype == "tool_end":
+            for s in steps:
+                if (
+                    s["kind"] == "tool"
+                    and s["tool"]["name"] == data["name"]
+                    and s["tool"]["status"] == "running"
+                ):
+                    s["tool"]["status"] = "complete"
+                    break
+        elif etype == "thinking_delta":
+            text = data.get("text", "")
+            if not text:
+                continue
+            if steps and steps[-1]["kind"] == "thinking":
+                steps[-1]["text"] += text
+            else:
+                steps.append({"kind": "thinking", "text": text})
+    return steps
+
+
+class TestInterleavedReasoningSteps:
+    """The core of the chat-UI fix: reasoning is split into separate blocks
+    around tool calls instead of being merged into one block."""
+
+    def test_thinking_splits_into_blocks_around_tools(self):
+        events = [
+            ("thinking_delta", {"text": "Let me "}),
+            ("thinking_delta", {"text": "check the schema."}),
+            ("tool_start", {"name": "get_schema"}),
+            ("tool_end", {"name": "get_schema"}),
+            ("thinking_delta", {"text": "Now find the hospital."}),
+            ("tool_start", {"name": "find_hospital"}),
+            ("tool_end", {"name": "find_hospital"}),
+        ]
+        steps = build_reasoning_steps(events)
+        assert [s["kind"] for s in steps] == ["thinking", "tool", "thinking", "tool"]
+        thinking = [s for s in steps if s["kind"] == "thinking"]
+        assert len(thinking) == 2, "thinking must NOT be merged across the tool"
+        assert thinking[0]["text"] == "Let me check the schema."
+        assert thinking[1]["text"] == "Now find the hospital."
+
+    def test_consecutive_thinking_without_tool_merges(self):
+        """Deltas of one reasoning block (no tool between) stay one block."""
+        steps = build_reasoning_steps([
+            ("thinking_delta", {"text": "a"}),
+            ("thinking_delta", {"text": "b"}),
+        ])
+        assert len(steps) == 1
+        assert steps[0]["text"] == "ab"
+
+    def test_parallel_tools_share_one_thinking_block(self):
+        """Parallel tool calls (one reasoning block, then several tools with no
+        thinking between) render as a single reasoning block + the tools — not a
+        repeated block per tool."""
+        events = [
+            ("thinking_delta", {"text": "Check schema and count in parallel."}),
+            ("tool_start", {"name": "execute_cypher"}),
+            ("tool_end", {"name": "execute_cypher"}),
+            ("tool_start", {"name": "execute_cypher"}),
+            ("tool_end", {"name": "execute_cypher"}),
+        ]
+        steps = build_reasoning_steps(events)
+        assert [s["kind"] for s in steps] == ["thinking", "tool", "tool"]
+        assert len([s for s in steps if s["kind"] == "thinking"]) == 1
+        # Both same-named parallel tools are completed (matched independently).
+        assert all(s["tool"]["status"] == "complete" for s in steps if s["kind"] == "tool")
+
+    def test_tool_end_completes_matching_tool(self):
+        steps = build_reasoning_steps([
+            ("tool_start", {"name": "t"}),
+            ("tool_end", {"name": "t"}),
+        ])
+        assert steps[0]["tool"]["status"] == "complete"
+
+
+class TestChatInterleavesThinkingTemplate:
+    """Static checks that the template implements interleaving, not merging."""
+
+    def test_thinking_delta_appends_or_starts_new_block(self):
+        src = CHAT_TEMPLATE.read_text()
+        # Append to the open thinking block; otherwise start a new one.
+        assert 'last.kind === "thinking"' in src
+        assert "type ReasoningItem" in src
+
+    def test_merged_thinking_state_is_gone(self):
+        src = CHAT_TEMPLATE.read_text()
+        # The old single-blob reasoning state must be replaced by ordered steps.
+        assert "streamingThinking" not in src
+        assert "streamingSteps" in src
+
+    def test_unified_reasoning_timeline_used(self):
+        src = CHAT_TEMPLATE.read_text()
+        assert "function ReasoningTimeline" in src
+        assert "ToolCallTimeline" not in src
