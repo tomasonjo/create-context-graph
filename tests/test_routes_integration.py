@@ -613,3 +613,91 @@ class TestBoltRoutes:
             # Returns 200 with an empty list from our mocked GDS
             assert r.status_code == 200
             assert "communities" in r.json()
+
+
+# ---------------------------------------------------------------------------
+# Human-in-the-loop reasoning-trace feedback (backend-agnostic file store)
+# ---------------------------------------------------------------------------
+
+
+class TestTraceFeedback:
+    """Reviewers annotate reasoning traces from the UI; the annotations persist
+    in a backend-agnostic ``.context-graph/trace_feedback.jsonl`` store and are
+    surfaced back through ``/traces`` and exported via ``/traces/feedback``."""
+
+    def test_submit_then_listed_with_trace(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="nams")
+        client = _fake_client()
+        client.reasoning.list_traces = AsyncMock(return_value=[SimpleNamespace(id="t-1")])
+        client.reasoning.get_trace_with_steps = AsyncMock(
+            return_value=SimpleNamespace(
+                task="find overdue accounts",
+                outcome="done",
+                steps=[SimpleNamespace(thought="t", action="a", observation="o")],
+            )
+        )
+        app, _, _ = _import_app(backend_dir, backend="nams", fake_client=client)
+
+        with TestClient(app) as tc:
+            # Submit feedback for the trace
+            r = tc.post(
+                "/api/traces/t-1/feedback",
+                json={
+                    "rating": "down",
+                    "tags": ["Wrong tool", "Bad query"],
+                    "note": "should have listed accounts first",
+                    "reviewer": "tomaz",
+                    "task": "find overdue accounts",
+                    "step_feedback": [{"step_number": 1, "note": "wrong cypher"}],
+                },
+            )
+            assert r.status_code == 200
+            saved = r.json()
+            assert saved["trace_id"] == "t-1"
+            assert saved["rating"] == "down"
+            assert saved["tags"] == ["Wrong tool", "Bad query"]
+            assert saved["step_feedback"] == [
+                {"step_number": 1, "rating": "unset", "note": "wrong cypher"}
+            ]
+
+            # The trace now carries the feedback inline
+            body = tc.get("/api/traces").json()
+            assert body["traces"][0]["feedback"]["rating"] == "down"
+            assert body["traces"][0]["feedback"]["reviewer"] == "tomaz"
+
+            # And it shows up in the export endpoint
+            export = tc.get("/api/traces/feedback").json()
+            assert len(export["feedback"]) == 1
+            assert export["feedback"][0]["trace_id"] == "t-1"
+
+    def test_feedback_is_last_write_wins(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="bolt")
+        client = _fake_client()
+        app, _, _ = _import_app(backend_dir, backend="bolt", fake_client=client)
+
+        with TestClient(app) as tc:
+            tc.post("/api/traces/abc/feedback", json={"rating": "down", "note": "bad"})
+            tc.post("/api/traces/abc/feedback", json={"rating": "up", "note": "fixed"})
+            export = tc.get("/api/traces/feedback").json()["feedback"]
+            assert len(export) == 1
+            assert export[0]["rating"] == "up"
+            assert export[0]["note"] == "fixed"
+
+    def test_empty_feedback_excluded_from_export(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        backend_dir = _scaffold(tmp_path, backend="bolt")
+        client = _fake_client()
+        app, _, _ = _import_app(backend_dir, backend="bolt", fake_client=client)
+
+        with TestClient(app) as tc:
+            # A cleared/empty record (invalid rating coerced to unset, no note)
+            # is stored but carries no signal, so it is not exported.
+            r = tc.post("/api/traces/empty/feedback", json={"rating": "bogus"})
+            assert r.status_code == 200
+            assert r.json()["rating"] == "unset"
+            assert tc.get("/api/traces/feedback").json()["feedback"] == []

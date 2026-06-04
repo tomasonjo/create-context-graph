@@ -18,6 +18,7 @@ from app.context_graph_client import (
     get_schema_visualization, expand_node, get_collector, is_connected,
 )
 from app.gds_client import check_gds_available, run_community_detection, run_pagerank
+from app.feedback import export_feedback, load_all_feedback, save_feedback
 from app.memory_adapter import (
     expand_node_nams,
     get_document_nams,
@@ -572,10 +573,52 @@ async def get_document(title: str):
 
 @router.get("/traces")
 async def list_traces():
-    """List reasoning traces with their full steps."""
+    """List reasoning traces with their full steps and any human feedback."""
     _require_neo4j()
     results = await list_reasoning_traces()
+    feedback = load_all_feedback()
+    for trace in results:
+        record = feedback.get(str(trace.get("id")))
+        if record:
+            trace["feedback"] = record
     return {"traces": results}
+
+
+class StepFeedback(BaseModel):
+    step_number: int
+    rating: str | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class TraceFeedbackRequest(BaseModel):
+    """Human-in-the-loop annotation for a single reasoning trace."""
+
+    rating: str | None = None  # "up" | "down" | "unset"
+    tags: list[str] = Field(default_factory=list)
+    note: str | None = Field(default=None, max_length=4000)
+    reviewer: str | None = Field(default=None, max_length=200)
+    # Snapshot of the trace task so an exported record is self-contained.
+    task: str | None = Field(default=None, max_length=4000)
+    step_feedback: list[StepFeedback] = Field(default_factory=list)
+
+
+@router.get("/traces/feedback")
+async def list_trace_feedback():
+    """Export all human feedback collected on reasoning traces (newest first).
+
+    The HITL dataset: each record pairs a ``trace_id`` with a reviewer's
+    verdict, issue tags, a free-text correction/guideline, and optional
+    per-step notes — material for curating agent guidelines or eval sets.
+    Independent of the graph backend, so it works even when Neo4j is down.
+    """
+    return {"feedback": export_feedback()}
+
+
+@router.post("/traces/{trace_id}/feedback")
+async def submit_trace_feedback(trace_id: str, request: TraceFeedbackRequest):
+    """Attach (or update) human-in-the-loop feedback on a reasoning trace."""
+    record = save_feedback(trace_id, request.model_dump())
+    return record
 
 
 @router.get("/entities/{name}")
