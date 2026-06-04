@@ -1,9 +1,22 @@
 {% raw %}"use client";
 
 import { useState, useEffect } from "react";
-import { Box, Heading, Text, VStack, HStack, Badge, Flex, Dialog, Portal, CloseButton } from "@chakra-ui/react";
-import { GitBranch, Brain, Wrench, Eye } from "lucide-react";
+import { Box, Heading, Text, VStack, HStack, Badge, Flex, Dialog, Portal, CloseButton, Button, Textarea, Input } from "@chakra-ui/react";
+import { GitBranch, Brain, Wrench, Eye, ThumbsUp, ThumbsDown, MessageSquare, Check } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+
+// Quick issue/quality labels a reviewer can attach to a trace. These become
+// structured tags in the exported HITL dataset used to curate guidelines.
+const FEEDBACK_TAGS = [
+  "Correct",
+  "Wrong answer",
+  "Wrong tool",
+  "Bad query",
+  "Hallucinated",
+  "Incomplete",
+  "Inefficient",
+  "Good reasoning",
+];
 
 interface ReasoningStep {
   step_number: number;
@@ -12,22 +25,67 @@ interface ReasoningStep {
   observation?: string;
 }
 
+interface StepFeedback {
+  step_number: number;
+  rating?: string;
+  note?: string;
+}
+
+interface TraceFeedback {
+  trace_id?: string;
+  rating?: string; // "up" | "down" | "unset"
+  tags?: string[];
+  note?: string;
+  reviewer?: string;
+  task?: string;
+  step_feedback?: StepFeedback[];
+  updated_at?: string;
+}
+
 interface ReasoningTrace {
   id: string;
   task: string;
   steps: ReasoningStep[];
   outcome: string;
+  feedback?: TraceFeedback;
+}
+
+function hasFeedbackSignal(fb?: TraceFeedback): boolean {
+  if (!fb) return false;
+  return (
+    (!!fb.rating && fb.rating !== "unset") ||
+    (fb.tags?.length || 0) > 0 ||
+    !!(fb.note && fb.note.trim()) ||
+    (fb.step_feedback?.length || 0) > 0
+  );
 }
 
 export function ReasoningTracePanel() {
   const [traces, setTraces] = useState<ReasoningTrace[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<ReasoningTrace | null>(null);
+  const [draft, setDraft] = useState<TraceFeedback>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     loadTraces();
     const interval = window.setInterval(loadTraces, 5000);
     return () => window.clearInterval(interval);
   }, []);
+
+  // Initialize the feedback draft when a different trace is opened. Keyed on the
+  // trace id (not the object) so refreshing a trace's own feedback after a save
+  // doesn't reset the form or wipe the "Saved" indicator.
+  useEffect(() => {
+    if (!selectedTrace) return;
+    setDraft(
+      selectedTrace.feedback
+        ? { ...selectedTrace.feedback }
+        : { rating: "unset", tags: [], note: "", step_feedback: [] }
+    );
+    setSaved(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrace?.id]);
 
   async function loadTraces() {
     try {
@@ -42,11 +100,83 @@ export function ReasoningTracePanel() {
               (s) => s && s.thought
             ),
             outcome: (t.outcome as string) || "",
+            feedback: (t.feedback as TraceFeedback) || undefined,
           }))
         );
       }
     } catch {
       // Backend may not be running yet
+    }
+  }
+
+  function setRating(rating: string) {
+    setDraft((d) => ({ ...d, rating: d.rating === rating ? "unset" : rating }));
+    setSaved(false);
+  }
+
+  function toggleTag(tag: string) {
+    setDraft((d) => {
+      const tags = new Set(d.tags || []);
+      if (tags.has(tag)) tags.delete(tag);
+      else tags.add(tag);
+      return { ...d, tags: Array.from(tags) };
+    });
+    setSaved(false);
+  }
+
+  function stepNoteValue(stepNumber: number): string {
+    return (draft.step_feedback || []).find((s) => s.step_number === stepNumber)?.note || "";
+  }
+
+  function setStepNote(stepNumber: number, note: string) {
+    setDraft((d) => {
+      const list = [...(d.step_feedback || [])];
+      const idx = list.findIndex((s) => s.step_number === stepNumber);
+      if (idx >= 0) list[idx] = { ...list[idx], step_number: stepNumber, note };
+      else list.push({ step_number: stepNumber, note });
+      return { ...d, step_feedback: list };
+    });
+    setSaved(false);
+  }
+
+  async function saveFeedback() {
+    if (!selectedTrace) return;
+    setSaving(true);
+    try {
+      const payload = {
+        rating: draft.rating || "unset",
+        tags: draft.tags || [],
+        note: draft.note || "",
+        reviewer: draft.reviewer || "",
+        task: selectedTrace.task,
+        step_feedback: (draft.step_feedback || []).filter(
+          (s) => (s.note || "").trim() || (s.rating && s.rating !== "unset")
+        ),
+      };
+      const res = await fetch(
+        `${API_BASE}/traces/${encodeURIComponent(selectedTrace.id)}/feedback`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10000),
+        }
+      );
+      if (res.ok) {
+        const record = (await res.json()) as TraceFeedback;
+        setDraft(record);
+        setSaved(true);
+        // Reflect the saved feedback into the list (badge) and the open trace
+        // without re-triggering the draft-init effect (same trace id).
+        setTraces((prev) =>
+          prev.map((t) => (t.id === selectedTrace.id ? { ...t, feedback: record } : t))
+        );
+        setSelectedTrace((t) => (t ? { ...t, feedback: record } : t));
+      }
+    } catch {
+      // Leave the draft intact so the reviewer can retry
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -108,6 +238,27 @@ export function ReasoningTracePanel() {
                 {trace.outcome && (
                   <Badge size="sm" colorPalette="green">
                     Resolved
+                  </Badge>
+                )}
+                {hasFeedbackSignal(trace.feedback) && (
+                  <Badge
+                    size="sm"
+                    colorPalette={
+                      trace.feedback?.rating === "down"
+                        ? "red"
+                        : trace.feedback?.rating === "up"
+                        ? "green"
+                        : "purple"
+                    }
+                  >
+                    {trace.feedback?.rating === "up" ? (
+                      <ThumbsUp size={10} />
+                    ) : trace.feedback?.rating === "down" ? (
+                      <ThumbsDown size={10} />
+                    ) : (
+                      <MessageSquare size={10} />
+                    )}
+                    Reviewed
                   </Badge>
                 )}
               </HStack>
@@ -191,6 +342,22 @@ export function ReasoningTracePanel() {
                               </Text>
                             </HStack>
                           )}
+                          <HStack align="center" gap={2} mt={2}>
+                            <Box flexShrink={0}>
+                              <MessageSquare size={12} color="#A0AEC0" />
+                            </Box>
+                            <Input
+                              flex={1}
+                              size="xs"
+                              fontSize="xs"
+                              variant="subtle"
+                              placeholder="Note on this step (optional)"
+                              value={stepNoteValue(step.step_number ?? i + 1)}
+                              onChange={(e) =>
+                                setStepNote(step.step_number ?? i + 1, e.target.value)
+                              }
+                            />
+                          </HStack>
                         </Box>
                       ))}
                     </VStack>
@@ -208,6 +375,113 @@ export function ReasoningTracePanel() {
                         </Text>
                       </Box>
                     )}
+
+                    {/* Human-in-the-loop feedback — reviewers rate the
+                        reasoning and leave guidance that is exported for
+                        downstream guideline curation. */}
+                    <Box mt={5} pt={4} borderTop="1px solid" borderColor="gray.200">
+                      <HStack justify="space-between" mb={1}>
+                        <HStack gap={2}>
+                          <MessageSquare size={14} />
+                          <Text fontSize="sm" fontWeight="bold">
+                            Human feedback
+                          </Text>
+                        </HStack>
+                        <Text fontSize="xs" color="gray.400">
+                          {draft.updated_at
+                            ? `Saved ${new Date(draft.updated_at).toLocaleString()}`
+                            : "Not yet reviewed"}
+                        </Text>
+                      </HStack>
+                      <Text fontSize="xs" color="gray.500" mb={3}>
+                        Rate this reasoning and leave guidance. Saved feedback is
+                        exportable for curating agent guidelines.
+                      </Text>
+
+                      <HStack gap={2} mb={3}>
+                        <Button
+                          size="xs"
+                          variant={draft.rating === "up" ? "solid" : "outline"}
+                          colorPalette="green"
+                          onClick={() => setRating("up")}
+                          aria-label="Rate reasoning good"
+                        >
+                          <ThumbsUp size={12} /> Good
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant={draft.rating === "down" ? "solid" : "outline"}
+                          colorPalette="red"
+                          onClick={() => setRating("down")}
+                          aria-label="Rate reasoning bad"
+                        >
+                          <ThumbsDown size={12} /> Bad
+                        </Button>
+                      </HStack>
+
+                      <Flex wrap="wrap" gap={2} mb={3}>
+                        {FEEDBACK_TAGS.map((tag) => {
+                          const active = (draft.tags || []).includes(tag);
+                          return (
+                            <Badge
+                              key={tag}
+                              cursor="pointer"
+                              px={2}
+                              py={1}
+                              variant={active ? "solid" : "outline"}
+                              colorPalette={active ? "blue" : "gray"}
+                              onClick={() => toggleTag(tag)}
+                            >
+                              {tag}
+                            </Badge>
+                          );
+                        })}
+                      </Flex>
+
+                      <Textarea
+                        value={draft.note || ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setDraft((d) => ({ ...d, note: value }));
+                          setSaved(false);
+                        }}
+                        placeholder="What was right or wrong? What should the agent do next time? (becomes a guideline)"
+                        fontSize="xs"
+                        rows={3}
+                        mb={2}
+                      />
+
+                      <Input
+                        value={draft.reviewer || ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setDraft((d) => ({ ...d, reviewer: value }));
+                          setSaved(false);
+                        }}
+                        placeholder="Reviewer (optional)"
+                        fontSize="xs"
+                        size="sm"
+                        mb={3}
+                      />
+
+                      <HStack gap={3}>
+                        <Button
+                          size="sm"
+                          colorPalette="blue"
+                          onClick={saveFeedback}
+                          loading={saving}
+                          loadingText="Saving"
+                        >
+                          Save feedback
+                        </Button>
+                        {saved && (
+                          <HStack gap={1} color="green.600">
+                            <Check size={12} />
+                            <Text fontSize="xs">Saved</Text>
+                          </HStack>
+                        )}
+                      </HStack>
+                    </Box>
                   </>
                 )}
               </Dialog.Body>

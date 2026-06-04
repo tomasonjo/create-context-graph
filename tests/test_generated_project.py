@@ -62,6 +62,7 @@ class TestGeneratedPythonFiles:
         "backend/app/config.py",
         "backend/app/agent.py",
         "backend/app/routes.py",
+        "backend/app/feedback.py",
         "backend/app/models.py",
         "backend/app/constants.py",
         "backend/app/context_graph_client.py",

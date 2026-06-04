@@ -416,6 +416,7 @@ class ProjectRenderer:
             "backend/shared/vector_client.py.j2": "app/vector_client.py",
             "backend/shared/models.py.j2": "app/models.py",
             "backend/shared/routes.py.j2": "app/routes.py",
+            "backend/shared/feedback.py.j2": "app/feedback.py",
             "backend/shared/memory.py.j2": "app/memory.py",
             "backend/shared/memory_adapter.py.j2": "app/memory_adapter.py",
             "backend/shared/pyproject.toml.j2": "pyproject.toml",

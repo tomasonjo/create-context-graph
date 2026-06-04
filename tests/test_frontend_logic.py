@@ -554,6 +554,73 @@ class TestReasoningTraceModal:
         )
 
 
+class TestTraceFeedbackUI:
+    """Human-in-the-loop feedback on reasoning traces: the panel renders rating
+    controls, issue tags, a guidance note, and per-step notes, and posts them to
+    the backend feedback endpoint with a payload the backend model accepts."""
+
+    @pytest.fixture(autouse=True)
+    def _load(self):
+        self.panel_src = REASONING_TRACE_TEMPLATE.read_text()
+        self.routes_src = ROUTES_TEMPLATE.read_text()
+
+    def test_panel_posts_to_feedback_endpoint(self):
+        # The save handler POSTs to /traces/<id>/feedback.
+        assert "/feedback`" in self.panel_src
+        assert "encodeURIComponent(selectedTrace.id)" in self.panel_src
+        assert 'method: "POST"' in self.panel_src
+
+    def test_panel_reads_feedback_off_traces(self):
+        # loadTraces maps the inline feedback the backend attaches to each trace.
+        assert "feedback: (t.feedback as TraceFeedback)" in self.panel_src
+        assert "interface TraceFeedback" in self.panel_src
+
+    def test_panel_renders_rating_and_tags_and_note(self):
+        # Thumbs up/down rating controls
+        assert "ThumbsUp" in self.panel_src and "ThumbsDown" in self.panel_src
+        assert 'setRating("up")' in self.panel_src and 'setRating("down")' in self.panel_src
+        # Quick issue tags (toggleable)
+        assert "FEEDBACK_TAGS" in self.panel_src and "toggleTag(tag)" in self.panel_src
+        # Free-text guidance note + save button
+        assert "Textarea" in self.panel_src
+        assert "saveFeedback" in self.panel_src
+
+    def test_panel_supports_per_step_notes(self):
+        assert "stepNoteValue(" in self.panel_src
+        assert "setStepNote(" in self.panel_src
+
+    def test_list_shows_reviewed_badge(self):
+        assert "hasFeedbackSignal(" in self.panel_src
+        assert "Reviewed" in self.panel_src
+
+    def test_backend_exposes_feedback_routes(self):
+        assert '@router.post("/traces/{trace_id}/feedback")' in self.routes_src
+        assert '@router.get("/traces/feedback")' in self.routes_src
+        # /traces now attaches the stored feedback to each trace
+        assert "load_all_feedback()" in self.routes_src
+
+    def test_feedback_payload_matches_backend_model(self):
+        """Every field the frontend sends must be declared on the backend
+        TraceFeedbackRequest model, or FastAPI would silently drop it."""
+        # Fields the frontend includes in the POST body
+        frontend_fields = {"rating", "tags", "note", "reviewer", "task", "step_feedback"}
+        # The backend request model block
+        model_block = self.routes_src.split("class TraceFeedbackRequest")[1].split("@router")[0]
+        for field in frontend_fields:
+            assert f"{field}:" in model_block, (
+                f"backend TraceFeedbackRequest is missing '{field}' the frontend sends"
+            )
+
+    def test_step_feedback_shape_matches(self):
+        """Per-step feedback objects carry step_number + note on both sides."""
+        # Backend StepFeedback model
+        assert "class StepFeedback" in self.routes_src
+        step_block = self.routes_src.split("class StepFeedback")[1].split("class TraceFeedbackRequest")[0]
+        assert "step_number:" in step_block and "note:" in step_block
+        # Frontend StepFeedback interface
+        assert "interface StepFeedback" in self.panel_src
+
+
 class TestToolTimelineShowsCypher:
     """The chat tool-call timeline surfaces the actual Cypher query, not just
     the bound parameters (which for domain tools are often only {domain})."""

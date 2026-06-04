@@ -1,0 +1,166 @@
+{% raw %}"""Human-in-the-loop feedback store for reasoning traces.
+
+Reviewers annotate the agent's reasoning traces from the UI; those annotations
+are persisted here as an append-only JSONL log under ``.context-graph/`` — the
+same sidecar directory the import pipeline uses for watermarks and deadletters.
+
+The store is deliberately backend-agnostic: it works identically whether the
+project runs on the hosted NAMS backend or a self-hosted bolt Neo4j. Neither the
+NAMS REST surface nor the neo4j-agent-memory reasoning API exposes a way to
+attach post-hoc human metadata to a trace, so we keep the feedback alongside the
+graph rather than inside it.
+
+The log is the raw material for "later operations": curating human-approved
+reasoning chains into agent guidelines, building eval sets, or filtering out
+traces a reviewer flagged as wrong before they are reused as few-shot examples.
+Each line is one feedback revision; reads fold the log to the latest revision
+per ``trace_id`` (last write wins), so editing feedback just appends.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# routes.py lives at backend/app/, scripts/import_data.py at backend/scripts/ —
+# both resolve PROJECT_ROOT three parents up. Keep ``.context-graph`` in sync
+# with scripts/import_data.py's SIDECAR_DIR.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SIDECAR_DIR = PROJECT_ROOT / ".context-graph"
+FEEDBACK_FILE = SIDECAR_DIR / "trace_feedback.jsonl"
+
+# A reviewer's overall verdict. ``unset`` lets them clear the verdict while
+# keeping tags/notes (or clear the whole record by leaving everything empty).
+VALID_RATINGS = {"up", "down", "unset"}
+
+_MAX_NOTE = 4000
+_MAX_TAG = 64
+_MAX_TAGS = 20
+_MAX_STEP_NOTE = 2000
+
+_lock = threading.Lock()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _coerce_rating(value: Any) -> str:
+    return value if value in VALID_RATINGS else "unset"
+
+
+def _coerce_step_feedback(raw: Any) -> list[dict[str, Any]]:
+    """Normalize per-step annotations, dropping empty ones."""
+    out: list[dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return out
+    seen: set[int] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            step_number = int(item.get("step_number"))
+        except (TypeError, ValueError):
+            continue
+        if step_number in seen:
+            continue
+        note = str(item.get("note") or "").strip()[:_MAX_STEP_NOTE]
+        rating = _coerce_rating(item.get("rating"))
+        if not note and rating == "unset":
+            continue
+        seen.add(step_number)
+        out.append({"step_number": step_number, "rating": rating, "note": note})
+    out.sort(key=lambda s: s["step_number"])
+    return out
+
+
+def normalize_feedback(trace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate + normalize an inbound feedback payload into a stored record."""
+    tags: list[str] = []
+    raw_tags = payload.get("tags")
+    if isinstance(raw_tags, list):
+        for tag in raw_tags:
+            tag = str(tag).strip()[:_MAX_TAG]
+            if tag and tag not in tags:
+                tags.append(tag)
+    return {
+        "trace_id": str(trace_id),
+        "rating": _coerce_rating(payload.get("rating")),
+        "tags": tags[:_MAX_TAGS],
+        "note": str(payload.get("note") or "").strip()[:_MAX_NOTE],
+        # ``task`` is snapshotted so an exported record is self-contained for
+        # offline use even if the underlying trace is later pruned.
+        "task": str(payload.get("task") or "").strip()[:_MAX_NOTE],
+        "reviewer": str(payload.get("reviewer") or "").strip()[:200],
+        "step_feedback": _coerce_step_feedback(payload.get("step_feedback")),
+        "updated_at": _now_iso(),
+    }
+
+
+def has_signal(record: dict[str, Any] | None) -> bool:
+    """True when a record carries any actual feedback (not an empty/cleared one)."""
+    if not record:
+        return False
+    return bool(
+        record.get("rating") not in (None, "unset")
+        or record.get("tags")
+        or (record.get("note") or "").strip()
+        or record.get("step_feedback")
+    )
+
+
+def save_feedback(trace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Append a normalized feedback revision for ``trace_id`` and return it."""
+    record = normalize_feedback(trace_id, payload)
+    with _lock:
+        SIDECAR_DIR.mkdir(parents=True, exist_ok=True)
+        with FEEDBACK_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return record
+
+
+def load_all_feedback() -> dict[str, dict[str, Any]]:
+    """Fold the append-only log into the latest record per ``trace_id``."""
+    latest: dict[str, dict[str, Any]] = {}
+    if not FEEDBACK_FILE.exists():
+        return latest
+    with _lock:
+        try:
+            lines = FEEDBACK_FILE.read_text(encoding="utf-8").splitlines()
+        except OSError as e:
+            logger.warning("trace_feedback.jsonl unreadable: %s", e)
+            return latest
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        trace_id = record.get("trace_id")
+        if trace_id:
+            latest[str(trace_id)] = record  # later lines overwrite earlier
+    return latest
+
+
+def get_feedback(trace_id: str) -> dict[str, Any] | None:
+    return load_all_feedback().get(str(trace_id))
+
+
+def export_feedback() -> list[dict[str, Any]]:
+    """Current feedback records that carry signal, newest first.
+
+    This is the dataset downstream tooling consumes — e.g. distilling
+    human-approved reasoning into agent guidelines or assembling eval sets.
+    """
+    records = [r for r in load_all_feedback().values() if has_signal(r)]
+    records.sort(key=lambda r: r.get("updated_at", ""), reverse=True)
+    return records
+{% endraw %}
