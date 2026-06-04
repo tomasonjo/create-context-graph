@@ -211,6 +211,25 @@ class TestGenerateCypherSchema:
             if line and not line.startswith("//"):
                 assert len(line) > 5  # meaningful statement
 
+    def test_split_on_semicolon_yields_only_valid_ddl(self, financial_ontology):
+        """Mirror apply_schema(): split on ';', run each non-'//' piece.
+
+        Regression: a ';' *inside* a ``//`` comment ("...generated; dimensions
+        must match...") split the comment, leaving the fragment
+        ``dimensions must match your embed model.`` as an executable statement
+        that Neo4j rejected with a syntax error. Every executable piece must
+        begin with a DDL keyword.
+        """
+        schema = generate_cypher_schema(financial_ontology)
+        ddl_starts = ("CREATE", "DROP", "CALL", "ALTER", "SHOW")
+        for statement in schema.split(";"):
+            stmt = statement.strip()
+            if stmt and not stmt.startswith("//"):
+                first = stmt.splitlines()[0].strip()
+                assert first.upper().startswith(ddl_starts), (
+                    f"apply_schema would execute a non-DDL fragment: {first!r}"
+                )
+
 
 class TestGeneratePydanticModels:
     def test_generates_valid_python(self, financial_ontology):

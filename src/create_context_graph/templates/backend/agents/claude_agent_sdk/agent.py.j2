@@ -8,7 +8,7 @@ import os
 import anthropic
 
 from app.config import settings
-from app.context_graph_client import execute_cypher, get_schema
+from app.context_graph_client import execute_cypher, get_schema, get_collector
 from app.memory import store_message, get_context, resolve_session_id
 
 
@@ -78,6 +78,43 @@ TOOL_CYPHER = {
 }
 
 {% raw %}
+def _thinking_config() -> dict | None:
+    """Extended-thinking config used to capture the model's reasoning.
+
+    The captured thinking blocks become the ``thought`` of each reasoning
+    trace step. Set ANTHROPIC_THINKING=0 to disable (the trace panel then
+    falls back to a rationale summarized from the tool inputs). Tune the
+    token budget with ANTHROPIC_THINKING_BUDGET (minimum 1024).
+    """
+    if os.getenv("ANTHROPIC_THINKING", "1").strip().lower() in ("0", "false", "no", "off"):
+        return None
+    try:
+        budget = int(os.getenv("ANTHROPIC_THINKING_BUDGET", "1024"))
+    except ValueError:
+        budget = 1024
+    return {"type": "enabled", "budget_tokens": max(budget, 1024)}
+
+
+_THINKING = _thinking_config()
+# Thinking tokens count against max_tokens, so reserve headroom for the answer.
+_MAX_TOKENS = 4096 + (_THINKING["budget_tokens"] if _THINKING else 0)
+# Interleaved thinking lets the model reason before EACH tool call (not just the
+# first turn), so every reasoning-trace step gets its own distinct thought.
+_THINKING_HEADERS = (
+    {"anthropic-beta": "interleaved-thinking-2025-05-14"} if _THINKING else None
+)
+
+
+def _extract_thinking(content) -> str:
+    """Join the extended-thinking text blocks from a response's content."""
+    parts = [
+        getattr(block, "thinking", "")
+        for block in content
+        if getattr(block, "type", None) == "thinking" and getattr(block, "thinking", "")
+    ]
+    return "\n".join(parts).strip()
+
+
 async def execute_tool(tool_name: str, tool_input: dict) -> str:
     """Execute a tool and return the result as a string."""
     try:
@@ -116,6 +153,7 @@ async def execute_tool(tool_name: str, tool_input: dict) -> str:
 async def handle_message(message: str, session_id: str | None = None) -> dict:
     """Handle an incoming chat message with tool-use loop."""
     session_id = resolve_session_id(session_id)
+    collector = get_collector()
     await store_message(session_id, "user", message)
     context = await get_context(session_id, query=message)
     history = context.get("messages", [])
@@ -126,14 +164,24 @@ async def handle_message(message: str, session_id: str | None = None) -> dict:
 
     response_text = ""
     for _iteration in range(max_iterations):
-        response = await client.messages.create(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
-            max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-            timeout=60.0,
-        )
+        create_kwargs = {
+            "model": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+            "max_tokens": _MAX_TOKENS,
+            "system": SYSTEM_PROMPT,
+            "tools": TOOLS,
+            "messages": messages,
+            "timeout": 60.0,
+        }
+        if _THINKING:
+            create_kwargs["thinking"] = _THINKING
+            create_kwargs["extra_headers"] = _THINKING_HEADERS
+        response = await client.messages.create(**create_kwargs)
+
+        # Capture the model's reasoning so it becomes the reasoning-trace
+        # thought for the tool call(s) that follow in this iteration.
+        thinking_text = _extract_thinking(response.content)
+        if thinking_text:
+            collector.record_thinking(thinking_text)
 
         if response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
@@ -190,23 +238,35 @@ async def handle_message_stream(message: str, session_id: str | None = None) -> 
     try:
         for _iteration in range(max_iterations):
             full_text_parts = []
-            async with client.messages.stream(
-                model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=TOOLS,
-                messages=messages,
-                timeout=60.0,
-            ) as stream:
+            stream_kwargs = {
+                "model": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+                "max_tokens": _MAX_TOKENS,
+                "system": SYSTEM_PROMPT,
+                "tools": TOOLS,
+                "messages": messages,
+                "timeout": 60.0,
+            }
+            if _THINKING:
+                stream_kwargs["thinking"] = _THINKING
+                stream_kwargs["extra_headers"] = _THINKING_HEADERS
+            async with client.messages.stream(**stream_kwargs) as stream:
                 async for event in stream:
-                    if (
-                        event.type == "content_block_delta"
-                        and hasattr(event.delta, "text")
-                    ):
+                    if event.type != "content_block_delta":
+                        continue
+                    # Answer text is surfaced as the response; thinking deltas
+                    # stream on their own channel so the UI shows reasoning
+                    # distinctly from the answer (and they feed the trace).
+                    if hasattr(event.delta, "text"):
                         collector.emit_text_delta(event.delta.text)
                         full_text_parts.append(event.delta.text)
+                    elif hasattr(event.delta, "thinking"):
+                        collector.emit_thinking_delta(event.delta.thinking)
 
                 response = await stream.get_final_message()
+
+            thinking_text = _extract_thinking(response.content)
+            if thinking_text:
+                collector.record_thinking(thinking_text)
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})

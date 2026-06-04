@@ -5,7 +5,7 @@ import {
   Box, Flex, Heading, Text, Textarea, IconButton, VStack, HStack,
   Badge, Button, Spinner, Skeleton, Collapsible, Timeline, Circle,
 } from "@chakra-ui/react";
-import { Send, RotateCcw, ChevronDown, Wrench, Check, Bot, User, Sparkles } from "lucide-react";
+import { Send, RotateCcw, ChevronDown, Wrench, Check, Bot, User, Sparkles, Brain } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { API_BASE, DEMO_SCENARIOS, DOMAIN } from "@/lib/config";
@@ -18,6 +18,14 @@ interface ToolCall {
   status: "running" | "complete";
   graph_data?: GraphData;
 }
+
+// A reasoning step is either a block of model "thinking" or a tool call, kept
+// in the order they actually happened. Interleaved thinking (the model reasons
+// before each tool call) is what lets us split reasoning into separate blocks
+// around the tools, instead of merging it all into one.
+type ReasoningItem =
+  | { kind: "thinking"; text: string }
+  | { kind: "tool"; tool: ToolCall };
 
 interface ExtractedEntity {
   name: string;
@@ -35,6 +43,10 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  // Ordered reasoning timeline (thinking blocks interleaved with tool calls).
+  steps?: ReasoningItem[];
+  // Legacy fields kept so chat history persisted before `steps` still renders.
+  thinking?: string;
   toolCalls?: ToolCall[];
   retryInput?: string;
   entities?: ExtractedEntity[];
@@ -139,7 +151,8 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
-  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
+  // Ordered reasoning timeline for the in-flight turn (thinking + tools).
+  const [streamingSteps, setStreamingSteps] = useState<ReasoningItem[]>([]);
   const [streamingEntities, setStreamingEntities] = useState<ExtractedEntity[]>([]);
   const [streamingPreferences, setStreamingPreferences] = useState<DetectedPreference[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -176,7 +189,7 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent, streamingToolCalls]);
+  }, [messages, streamingContent, streamingSteps]);
 
   // Elapsed time counter during loading
   useEffect(() => {
@@ -216,7 +229,7 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
     setMessages([]);
     setSessionId(null);
     setStreamingContent("");
-    setStreamingToolCalls([]);
+    setStreamingSteps([]);
     setStreamingEntities([]);
     setStreamingPreferences([]);
     streamingEntitiesRef.current = [];
@@ -237,7 +250,7 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
     setInput("");
     setLoading(true);
     setStreamingContent("");
-    setStreamingToolCalls([]);
+    setStreamingSteps([]);
     setStreamingEntities([]);
     setStreamingPreferences([]);
     streamingEntitiesRef.current = [];
@@ -278,7 +291,10 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
       const decoder = new TextDecoder();
       let buffer = "";
       let fullText = "";
-      let toolCalls: ToolCall[] = [];
+      // Ordered reasoning timeline: thinking blocks and tool calls in the order
+      // they arrive. A new thinking block is started after each tool, so the UI
+      // shows reasoning split around the tools instead of one merged block.
+      let steps: ReasoningItem[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -302,34 +318,45 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
                   break;
 
                 case "tool_start":
-                  toolCalls = [
-                    ...toolCalls,
+                  steps = [
+                    ...steps,
                     {
-                      name: data.name,
-                      inputs: data.inputs,
-                      output_preview: "",
-                      status: "running",
+                      kind: "tool",
+                      tool: {
+                        name: data.name,
+                        inputs: data.inputs,
+                        output_preview: "",
+                        status: "running",
+                      },
                     },
                   ];
-                  setStreamingToolCalls([...toolCalls]);
+                  setStreamingSteps([...steps]);
                   break;
 
                 case "tool_end": {
                   const endName = data.name;
                   let matched = false;
-                  toolCalls = toolCalls.map((tc) => {
-                    if (tc.name === endName && tc.status === "running" && !matched) {
+                  steps = steps.map((s) => {
+                    if (
+                      s.kind === "tool" &&
+                      s.tool.name === endName &&
+                      s.tool.status === "running" &&
+                      !matched
+                    ) {
                       matched = true;
                       return {
-                        ...tc,
-                        output_preview: data.output_preview || "",
-                        status: "complete" as const,
-                        graph_data: data.graph_data,
+                        kind: "tool",
+                        tool: {
+                          ...s.tool,
+                          output_preview: data.output_preview || "",
+                          status: "complete" as const,
+                          graph_data: data.graph_data,
+                        },
                       };
                     }
-                    return tc;
+                    return s;
                   });
-                  setStreamingToolCalls([...toolCalls]);
+                  setStreamingSteps([...steps]);
                   if (data.graph_data?.results?.length && onGraphUpdate) {
                     onGraphUpdate(data.graph_data);
                   }
@@ -340,6 +367,25 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
                   fullText += data.text;
                   appendStreamingText(data.text);
                   break;
+
+                case "thinking_delta": {
+                  // Model reasoning on its own channel. Append to the open
+                  // thinking block, or start a NEW one if a tool ran since the
+                  // last reasoning — interleaved thinking becomes separate blocks
+                  // around the tools rather than one merged block.
+                  if (!data.text) break;
+                  const last = steps[steps.length - 1];
+                  if (last && last.kind === "thinking") {
+                    steps = [
+                      ...steps.slice(0, -1),
+                      { kind: "thinking", text: last.text + data.text },
+                    ];
+                  } else {
+                    steps = [...steps, { kind: "thinking", text: data.text }];
+                  }
+                  setStreamingSteps([...steps]);
+                  break;
+                }
 
                 case "entities_extracted":
                   if (data.entities?.length) {
@@ -377,13 +423,13 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
                       id: crypto.randomUUID(),
                       role: "assistant",
                       content: data.response || fullText,
-                      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+                      steps: steps.length > 0 ? steps : undefined,
                       entities: finalEntities.length > 0 ? [...finalEntities] : undefined,
                       preferences: finalPreferences.length > 0 ? [...finalPreferences] : undefined,
                     },
                   ]);
                   setStreamingContent("");
-                  setStreamingToolCalls([]);
+                  setStreamingSteps([]);
                   setStreamingEntities([]);
                   setStreamingPreferences([]);
                   streamingEntitiesRef.current = [];
@@ -425,7 +471,7 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
         { id: crypto.randomUUID(), role: "assistant", content: `**Error:** ${errorMsg}`, retryInput: messageText },
       ]);
       setStreamingContent("");
-      setStreamingToolCalls([]);
+      setStreamingSteps([]);
       setStreamingEntities([]);
       setStreamingPreferences([]);
       streamingEntitiesRef.current = [];
@@ -447,6 +493,11 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
 
   // Collect all prompts for suggested questions display
   const allPrompts = DEMO_SCENARIOS.flatMap((s) => s.prompts);
+
+  // Tool calls in the in-flight turn (for the "Running tool X of Y" status).
+  const streamingTools = streamingSteps
+    .filter((s): s is Extract<ReasoningItem, { kind: "tool" }> => s.kind === "tool")
+    .map((s) => s.tool);
 
   return (
     <Flex direction="column" h="100%">
@@ -500,11 +551,22 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
       <VStack flex={1} overflow="auto" px={4} py={2} gap={3} align="stretch"
         display={messages.length === 0 && !loading ? "none" : "flex"}
       >
-        {messages.map((msg) => (
+        {messages.map((msg) => {
+          // Reasoning timeline: prefer the new ordered `steps`; upgrade legacy
+          // `toolCalls` to tool-only steps so chat history persisted before this
+          // change still renders its tool cards.
+          const steps: ReasoningItem[] =
+            msg.steps ??
+            (msg.toolCalls
+              ? msg.toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
+              : []);
+          const hasCapturedThinking =
+            !!msg.thinking || steps.some((s) => s.kind === "thinking");
+          return (
           <Box key={msg.id}>
-            {/* Completed tool call cards */}
-            {msg.toolCalls && msg.toolCalls.length > 0 && (
-              <ToolCallTimeline toolCalls={msg.toolCalls} />
+            {/* Reasoning + tool-call timeline, in chronological order */}
+            {msg.role === "assistant" && steps.length > 0 && (
+              <ReasoningTimeline items={steps} />
             )}
             <Flex gap={2} alignItems="flex-start">
               <Circle
@@ -527,7 +589,14 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
                 {msg.role === "assistant" ? (
                   <Box fontSize="sm" className="markdown-content">
                     {(() => {
-                      const { thinking, response } = splitThinkingAndResponse(msg.content);
+                      // Real reasoning is shown in the timeline above; only run
+                      // the heuristic split for frameworks that never emit
+                      // thinking blocks (reasoning embedded in the answer text).
+                      const { thinking, response } = msg.thinking
+                        ? { thinking: msg.thinking, response: msg.content }
+                        : hasCapturedThinking
+                          ? { thinking: "", response: msg.content }
+                          : splitThinkingAndResponse(msg.content);
                       return (
                         <>
                           {thinking && (
@@ -592,16 +661,17 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
               </Box>
             </Flex>
           </Box>
-        ))}
+          );
+        })}
 
         {/* Streaming in progress */}
         {loading && (
           <Box>
-            {/* Real-time tool call timeline */}
-            {streamingToolCalls.length > 0 && (
-              <ToolCallTimeline toolCalls={streamingToolCalls} />
+            {/* Live reasoning + tool timeline, interleaved chronologically */}
+            {streamingSteps.length > 0 && (
+              <ReasoningTimeline items={streamingSteps} live />
             )}
-            {/* Streaming text */}
+            {/* Streaming answer text */}
             {streamingContent ? (
               <Flex gap={2} alignItems="flex-start">
                 <Circle size="7" bg="gray.600" color="white" flexShrink={0} mt={0.5}>
@@ -616,13 +686,13 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
                 </Box>
               </Flex>
             ) : (
-              /* Loading skeleton when waiting for first content */
+              /* Status line while waiting for the answer text */
               <Flex gap={2} alignItems="flex-start">
                 <Circle size="7" bg="gray.600" color="white" flexShrink={0} mt={0.5}>
                   <Bot size={14} />
                 </Circle>
                 <Box bg="gray.50" px={3} py={2} borderRadius="lg" flex={1}>
-                  {streamingToolCalls.length === 0 ? (
+                  {streamingSteps.length === 0 ? (
                     <VStack align="stretch" gap={2}>
                       <HStack gap={2}>
                         <Spinner size="xs" />
@@ -638,9 +708,14 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
                     <HStack gap={2}>
                       <Spinner size="xs" />
                       <Text fontSize="sm" color="gray.500">
-                        Running tool {streamingToolCalls.filter(tc => tc.status === "complete").length + 1}
-                        {" of "}
-                        {streamingToolCalls.length}...
+                        {(() => {
+                          const running = streamingTools.some((t) => t.status === "running");
+                          if (running) {
+                            const done = streamingTools.filter((t) => t.status === "complete").length;
+                            return `Running tool ${done + 1} of ${streamingTools.length}...`;
+                          }
+                          return "Working...";
+                        })()}
                       </Text>
                       {elapsedSeconds > 3 && (
                         <Text fontSize="xs" color="gray.400">{elapsedSeconds}s</Text>
@@ -708,72 +783,156 @@ export function ChatInterface({ onGraphUpdate, externalInput, onExternalInputCon
 }
 
 // ---------------------------------------------------------------------------
-// Tool call timeline component
+// Reasoning timeline — thinking blocks interleaved with tool calls
 // ---------------------------------------------------------------------------
 
-function ToolCallTimeline({ toolCalls }: { toolCalls: ToolCall[] }) {
+// The body of one tool step: the tool badge plus a collapsible Cypher /
+// parameters / output-preview detail.
+function ToolStepContent({ tc }: { tc: ToolCall }) {
+  return (
+    <Collapsible.Root>
+      <HStack gap={2}>
+        <Badge colorPalette="purple" size="sm">
+          <Wrench size={10} />
+          {tc.name}
+        </Badge>
+        {tc.status === "running" && (
+          <Text fontSize="xs" color="gray.500">running...</Text>
+        )}
+        {tc.output_preview && (
+          <Collapsible.Trigger asChild>
+            <Button variant="ghost" size="xs" px={1}>
+              <ChevronDown size={12} />
+            </Button>
+          </Collapsible.Trigger>
+        )}
+      </HStack>
+      {tc.output_preview && (
+        <Collapsible.Content>
+          <Box
+            mt={1}
+            px={2}
+            py={1}
+            bg="gray.50"
+            borderRadius="sm"
+            fontSize="xs"
+            fontFamily="mono"
+            maxH="220px"
+            overflow="auto"
+          >
+            {(() => {
+              // execute_cypher now reports inputs as {query, parameters},
+              // so show the actual Cypher that ran (domain tools bind it
+              // internally — params alone are often just {domain}).
+              const query =
+                typeof tc.inputs.query === "string" ? (tc.inputs.query as string) : "";
+              const rawParams = tc.inputs.parameters;
+              const params =
+                rawParams && typeof rawParams === "object"
+                  ? (rawParams as Record<string, unknown>)
+                  : null;
+              return (
+                <>
+                  {query ? (
+                    <Box mb={1}>
+                      <Text color="gray.600" fontWeight="medium" mb={0.5}>
+                        Cypher
+                      </Text>
+                      <Box
+                        as="pre"
+                        whiteSpace="pre-wrap"
+                        wordBreak="break-word"
+                        color="purple.700"
+                      >
+                        {query}
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Text color="gray.600" mb={1} fontWeight="medium">
+                      Inputs: {JSON.stringify(tc.inputs).slice(0, 200)}
+                    </Text>
+                  )}
+                  {params && Object.keys(params).length > 0 && (
+                    <Text color="gray.600" mb={1} wordBreak="break-word">
+                      Params: {JSON.stringify(params)}
+                    </Text>
+                  )}
+                  <Text color="gray.500">
+                    {tc.output_preview.slice(0, 300)}
+                    {tc.output_preview.length > 300 && "..."}
+                  </Text>
+                </>
+              );
+            })()}
+          </Box>
+        </Collapsible.Content>
+      )}
+    </Collapsible.Root>
+  );
+}
+
+// A unified timeline of reasoning steps — each item is either a thinking block
+// (the model's reasoning) or a tool call, shown in the order they happened. New
+// thinking after a tool starts a new block, so reasoning is split around the
+// tools instead of merged. `live` marks the in-flight turn so the trailing
+// in-progress thinking block shows a spinner.
+function ReasoningTimeline({ items, live = false }: { items: ReasoningItem[]; live?: boolean }) {
   return (
     <Timeline.Root size="sm" mb={2}>
-      {toolCalls.map((tc, j) => (
-        <Timeline.Item key={`${tc.name}-${j}`}>
-          <Timeline.Connector>
-            <Timeline.Separator />
-            <Timeline.Indicator
-              bg={tc.status === "running" ? "purple.500" : "green.500"}
-              color="white"
-            >
-              {tc.status === "running" ? (
-                <Spinner size="xs" color="white" />
-              ) : (
-                <Check size={10} />
-              )}
-            </Timeline.Indicator>
-          </Timeline.Connector>
-          <Timeline.Content pb={2}>
-            <Collapsible.Root>
-              <HStack gap={2}>
-                <Badge colorPalette="purple" size="sm">
-                  <Wrench size={10} />
-                  {tc.name}
-                </Badge>
-                {tc.status === "running" && (
-                  <Text fontSize="xs" color="gray.500">running...</Text>
+      {items.map((item, idx) => {
+        if (item.kind === "thinking") {
+          const inProgress = live && idx === items.length - 1;
+          return (
+            <Timeline.Item key={`think-${idx}`}>
+              <Timeline.Connector>
+                <Timeline.Separator />
+                <Timeline.Indicator bg="purple.500" color="white">
+                  <Brain size={10} />
+                </Timeline.Indicator>
+              </Timeline.Connector>
+              <Timeline.Content pb={2}>
+                <HStack gap={1} mb={0.5}>
+                  <Text fontSize="xs" fontWeight="medium" color="purple.600">
+                    Reasoning
+                  </Text>
+                  {inProgress && <Spinner size="xs" color="purple.400" />}
+                </HStack>
+                <Box
+                  fontSize="xs"
+                  color="gray.600"
+                  fontStyle="italic"
+                  whiteSpace="pre-wrap"
+                  maxH="200px"
+                  overflowY="auto"
+                >
+                  {item.text}
+                </Box>
+              </Timeline.Content>
+            </Timeline.Item>
+          );
+        }
+        const tc = item.tool;
+        return (
+          <Timeline.Item key={`tool-${idx}-${tc.name}`}>
+            <Timeline.Connector>
+              <Timeline.Separator />
+              <Timeline.Indicator
+                bg={tc.status === "running" ? "purple.500" : "green.500"}
+                color="white"
+              >
+                {tc.status === "running" ? (
+                  <Spinner size="xs" color="white" />
+                ) : (
+                  <Check size={10} />
                 )}
-                {tc.output_preview && (
-                  <Collapsible.Trigger asChild>
-                    <Button variant="ghost" size="xs" px={1}>
-                      <ChevronDown size={12} />
-                    </Button>
-                  </Collapsible.Trigger>
-                )}
-              </HStack>
-              {tc.output_preview && (
-                <Collapsible.Content>
-                  <Box
-                    mt={1}
-                    px={2}
-                    py={1}
-                    bg="gray.50"
-                    borderRadius="sm"
-                    fontSize="xs"
-                    fontFamily="mono"
-                    maxH="120px"
-                    overflow="auto"
-                  >
-                    <Text color="gray.600" mb={1} fontWeight="medium">
-                      Inputs: {JSON.stringify(tc.inputs).slice(0, 120)}
-                    </Text>
-                    <Text color="gray.500">
-                      {tc.output_preview.slice(0, 300)}
-                      {tc.output_preview.length > 300 && "..."}
-                    </Text>
-                  </Box>
-                </Collapsible.Content>
-              )}
-            </Collapsible.Root>
-          </Timeline.Content>
-        </Timeline.Item>
-      ))}
+              </Timeline.Indicator>
+            </Timeline.Connector>
+            <Timeline.Content pb={2}>
+              <ToolStepContent tc={tc} />
+            </Timeline.Content>
+          </Timeline.Item>
+        );
+      })}
     </Timeline.Root>
   );
 }

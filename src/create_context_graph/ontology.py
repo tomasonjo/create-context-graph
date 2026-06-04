@@ -397,7 +397,7 @@ def generate_cypher_schema(ontology: DomainOntology) -> str:
     lines.append("CREATE FULLTEXT INDEX local_file_fulltext IF NOT EXISTS FOR (n:Document|Section) ON EACH [n.title, n.description];")
     lines.append("")
     lines.append("// Vector index for semantic search with pre-filtering (Neo4j 2026.01+)")
-    lines.append("// Create after embeddings are generated; dimensions must match your embed model.")
+    lines.append("// Create after embeddings are generated. Dimensions must match your embed model.")
     lines.append("// CREATE VECTOR INDEX local_file_embedding IF NOT EXISTS")
     lines.append("// FOR (n:Document|Section) ON n.embedding")
     lines.append("// WITH [n.domain, n.fileExtension, n.loadedAt, n.createdAt, n.modifiedAt,")
