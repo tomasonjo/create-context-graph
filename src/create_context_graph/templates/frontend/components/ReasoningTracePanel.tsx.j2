@@ -66,6 +66,8 @@ export function ReasoningTracePanel() {
   const [draft, setDraft] = useState<TraceFeedback>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Step numbers whose note input is revealed (keeps the step list uncluttered).
+  const [openNotes, setOpenNotes] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     loadTraces();
@@ -84,6 +86,7 @@ export function ReasoningTracePanel() {
         : { rating: "unset", tags: [], note: "", step_feedback: [] }
     );
     setSaved(false);
+    setOpenNotes(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTrace?.id]);
 
@@ -137,6 +140,15 @@ export function ReasoningTracePanel() {
       return { ...d, step_feedback: list };
     });
     setSaved(false);
+  }
+
+  function toggleStepNoteOpen(stepNumber: number) {
+    setOpenNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepNumber)) next.delete(stepNumber);
+      else next.add(stepNumber);
+      return next;
+    });
   }
 
   async function saveFeedback() {
@@ -279,95 +291,209 @@ export function ReasoningTracePanel() {
         <Portal>
           <Dialog.Backdrop />
           <Dialog.Positioner>
-            <Dialog.Content>
+            <Dialog.Content borderRadius="xl" overflow="hidden">
               <Dialog.CloseTrigger asChild>
                 <CloseButton size="sm" />
               </Dialog.CloseTrigger>
-              <Dialog.Header>
-                <HStack gap={2}>
-                  <GitBranch size={16} />
-                  <Dialog.Title fontSize="sm">{selectedTrace?.task}</Dialog.Title>
-                </HStack>
+
+              {/* Fixed header: task + at-a-glance metadata */}
+              <Dialog.Header
+                px={6}
+                pt={5}
+                pb={4}
+                borderBottomWidth="1px"
+                borderColor="gray.100"
+              >
+                <Box pr={6}>
+                  <HStack gap={2} mb={2} align="flex-start">
+                    <Box color="blue.500" mt="1px" flexShrink={0}>
+                      <GitBranch size={16} />
+                    </Box>
+                    <Dialog.Title fontSize="sm" lineHeight="short">
+                      {selectedTrace?.task}
+                    </Dialog.Title>
+                  </HStack>
+                  <HStack gap={2}>
+                    <Badge size="sm" variant="subtle" colorPalette="gray">
+                      {selectedTrace?.steps.length} steps
+                    </Badge>
+                    {selectedTrace?.outcome && (
+                      <Badge size="sm" variant="subtle" colorPalette="green">
+                        Resolved
+                      </Badge>
+                    )}
+                    {hasFeedbackSignal(selectedTrace?.feedback) && (
+                      <Badge
+                        size="sm"
+                        variant="subtle"
+                        colorPalette={
+                          selectedTrace?.feedback?.rating === "down"
+                            ? "red"
+                            : selectedTrace?.feedback?.rating === "up"
+                            ? "green"
+                            : "purple"
+                        }
+                      >
+                        Reviewed
+                      </Badge>
+                    )}
+                  </HStack>
+                </Box>
               </Dialog.Header>
-              <Dialog.Body pb={6}>
+
+              {/* Scrolling body: reasoning steps, outcome, feedback */}
+              <Dialog.Body px={6} py={5}>
                 {selectedTrace && (
                   <>
                     <VStack gap={3} align="stretch">
-                      {selectedTrace.steps.map((step, i) => (
-                        <Box
-                          key={`step-${i}-${(step.action || "").slice(0, 32)}`}
-                          pl={3}
-                          borderLeft="2px solid"
-                          borderColor="blue.200"
-                        >
-                          <HStack align="flex-start" gap={2}>
-                            <Box mt="2px" flexShrink={0}>
-                              <Brain size={12} />
-                            </Box>
-                            <Text fontSize="xs" color="gray.600">
-                              {step.thought}
-                            </Text>
-                          </HStack>
-                          <HStack align="flex-start" gap={2} mt={1}>
-                            <Box mt="2px" flexShrink={0}>
-                              <Wrench size={12} />
-                            </Box>
-                            <Box
-                              as="pre"
-                              flex={1}
-                              fontSize="xs"
-                              fontFamily="mono"
-                              whiteSpace="pre-wrap"
-                              wordBreak="break-word"
-                              bg="gray.50"
-                              px={2}
-                              py={1}
-                              borderRadius="sm"
-                            >
-                              {step.action}
-                            </Box>
-                          </HStack>
-                          {step.observation && (
-                            <HStack align="flex-start" gap={2} mt={1}>
-                              <Box mt="2px" flexShrink={0}>
-                                <Eye size={12} />
-                              </Box>
+                      {selectedTrace.steps.map((step, i) => {
+                        const stepNum = step.step_number ?? i + 1;
+                        const noteShown =
+                          openNotes.has(stepNum) || !!stepNoteValue(stepNum);
+                        return (
+                          <Box
+                            key={`step-${i}-${(step.action || "").slice(0, 32)}`}
+                            borderWidth="1px"
+                            borderColor="gray.200"
+                            borderRadius="lg"
+                            p={3}
+                          >
+                            {/* Thought, prefixed with a step number chip */}
+                            <HStack align="flex-start" gap={2.5}>
+                              <Flex
+                                flexShrink={0}
+                                boxSize={5}
+                                mt="1px"
+                                borderRadius="full"
+                                bg="blue.50"
+                                color="blue.600"
+                                align="center"
+                                justify="center"
+                                fontSize="2xs"
+                                fontWeight="bold"
+                              >
+                                {stepNum}
+                              </Flex>
                               <Text
-                                fontSize="xs"
-                                color="green.700"
+                                fontSize="sm"
+                                color="gray.700"
+                                lineHeight="tall"
                                 whiteSpace="pre-wrap"
                                 wordBreak="break-word"
                               >
-                                {step.observation}
+                                {step.thought}
                               </Text>
                             </HStack>
-                          )}
-                          <HStack align="center" gap={2} mt={2}>
-                            <Box flexShrink={0}>
-                              <MessageSquare size={12} color="#A0AEC0" />
+
+                            {/* Action (the Cypher that ran) */}
+                            {step.action && (
+                              <Box mt={2.5} pl={7}>
+                                <HStack gap={1.5} mb={1} color="gray.400">
+                                  <Wrench size={11} />
+                                  <Text
+                                    fontSize="2xs"
+                                    fontWeight="semibold"
+                                    letterSpacing="wide"
+                                    textTransform="uppercase"
+                                  >
+                                    Action
+                                  </Text>
+                                </HStack>
+                                <Box
+                                  as="pre"
+                                  fontSize="xs"
+                                  fontFamily="mono"
+                                  whiteSpace="pre-wrap"
+                                  wordBreak="break-word"
+                                  bg="gray.50"
+                                  borderWidth="1px"
+                                  borderColor="gray.100"
+                                  color="gray.700"
+                                  px={3}
+                                  py={2}
+                                  borderRadius="md"
+                                >
+                                  {step.action}
+                                </Box>
+                              </Box>
+                            )}
+
+                            {/* Result / observation */}
+                            {step.observation && (
+                              <Box mt={2.5} pl={7}>
+                                <HStack gap={1.5} mb={1} color="gray.400">
+                                  <Eye size={11} />
+                                  <Text
+                                    fontSize="2xs"
+                                    fontWeight="semibold"
+                                    letterSpacing="wide"
+                                    textTransform="uppercase"
+                                  >
+                                    Result
+                                  </Text>
+                                </HStack>
+                                <Text
+                                  fontSize="xs"
+                                  color="gray.600"
+                                  whiteSpace="pre-wrap"
+                                  wordBreak="break-word"
+                                >
+                                  {step.observation}
+                                </Text>
+                              </Box>
+                            )}
+
+                            {/* Per-step note — collapsed until requested */}
+                            <Box mt={2} pl={7}>
+                              {noteShown ? (
+                                <Input
+                                  size="xs"
+                                  fontSize="xs"
+                                  bg="white"
+                                  placeholder="Note on this step…"
+                                  value={stepNoteValue(stepNum)}
+                                  onChange={(e) => setStepNote(stepNum, e.target.value)}
+                                />
+                              ) : (
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  colorPalette="gray"
+                                  color="gray.400"
+                                  onClick={() => toggleStepNoteOpen(stepNum)}
+                                >
+                                  <MessageSquare size={11} /> Add note
+                                </Button>
+                              )}
                             </Box>
-                            <Input
-                              flex={1}
-                              size="xs"
-                              fontSize="xs"
-                              variant="subtle"
-                              placeholder="Note on this step (optional)"
-                              value={stepNoteValue(step.step_number ?? i + 1)}
-                              onChange={(e) =>
-                                setStepNote(step.step_number ?? i + 1, e.target.value)
-                              }
-                            />
-                          </HStack>
-                        </Box>
-                      ))}
+                          </Box>
+                        );
+                      })}
                     </VStack>
+
                     {selectedTrace.outcome && (
-                      <Box mt={4} p={2} bg="green.50" borderRadius="md">
-                        <Text fontSize="xs" fontWeight="bold">
-                          Outcome:
-                        </Text>
+                      <Box
+                        mt={4}
+                        borderWidth="1px"
+                        borderColor="green.200"
+                        bg="green.50"
+                        borderRadius="lg"
+                        p={3}
+                      >
+                        <HStack gap={1.5} mb={1} color="green.700">
+                          <Check size={12} />
+                          <Text
+                            fontSize="2xs"
+                            fontWeight="bold"
+                            letterSpacing="wide"
+                            textTransform="uppercase"
+                          >
+                            Outcome
+                          </Text>
+                        </HStack>
                         <Text
                           fontSize="xs"
+                          color="gray.700"
                           whiteSpace="pre-wrap"
                           wordBreak="break-word"
                         >
@@ -376,50 +502,71 @@ export function ReasoningTracePanel() {
                       </Box>
                     )}
 
-                    {/* Human-in-the-loop feedback — reviewers rate the
-                        reasoning and leave guidance that is exported for
-                        downstream guideline curation. */}
-                    <Box mt={5} pt={4} borderTop="1px solid" borderColor="gray.200">
-                      <HStack justify="space-between" mb={1}>
-                        <HStack gap={2}>
-                          <MessageSquare size={14} />
-                          <Text fontSize="sm" fontWeight="bold">
-                            Human feedback
-                          </Text>
-                        </HStack>
-                        <Text fontSize="xs" color="gray.400">
-                          {draft.updated_at
-                            ? `Saved ${new Date(draft.updated_at).toLocaleString()}`
-                            : "Not yet reviewed"}
+                    {/* Human-in-the-loop feedback — reviewers rate the reasoning
+                        and leave guidance that is exported for guideline
+                        curation. Grouped in one card; Save lives in the footer. */}
+                    <Box
+                      mt={4}
+                      borderWidth="1px"
+                      borderColor="gray.200"
+                      bg="gray.50"
+                      borderRadius="lg"
+                      p={4}
+                    >
+                      <HStack gap={2} mb={1}>
+                        <MessageSquare size={14} />
+                        <Text fontSize="sm" fontWeight="bold">
+                          Your feedback
                         </Text>
                       </HStack>
-                      <Text fontSize="xs" color="gray.500" mb={3}>
-                        Rate this reasoning and leave guidance. Saved feedback is
-                        exportable for curating agent guidelines.
+                      <Text fontSize="xs" color="gray.500" mb={4}>
+                        Exported for curating agent guidelines & eval sets.
                       </Text>
 
-                      <HStack gap={2} mb={3}>
+                      <Text
+                        fontSize="2xs"
+                        fontWeight="semibold"
+                        letterSpacing="wide"
+                        textTransform="uppercase"
+                        color="gray.400"
+                        mb={1.5}
+                      >
+                        Verdict
+                      </Text>
+                      <HStack gap={2} mb={4}>
                         <Button
+                          flex={1}
                           size="xs"
                           variant={draft.rating === "up" ? "solid" : "outline"}
                           colorPalette="green"
                           onClick={() => setRating("up")}
                           aria-label="Rate reasoning good"
                         >
-                          <ThumbsUp size={12} /> Good
+                          <ThumbsUp size={13} /> Good
                         </Button>
                         <Button
+                          flex={1}
                           size="xs"
                           variant={draft.rating === "down" ? "solid" : "outline"}
                           colorPalette="red"
                           onClick={() => setRating("down")}
                           aria-label="Rate reasoning bad"
                         >
-                          <ThumbsDown size={12} /> Bad
+                          <ThumbsDown size={13} /> Bad
                         </Button>
                       </HStack>
 
-                      <Flex wrap="wrap" gap={2} mb={3}>
+                      <Text
+                        fontSize="2xs"
+                        fontWeight="semibold"
+                        letterSpacing="wide"
+                        textTransform="uppercase"
+                        color="gray.400"
+                        mb={1.5}
+                      >
+                        Tags
+                      </Text>
+                      <Flex wrap="wrap" gap={1.5} mb={4}>
                         {FEEDBACK_TAGS.map((tag) => {
                           const active = (draft.tags || []).includes(tag);
                           return (
@@ -428,6 +575,7 @@ export function ReasoningTracePanel() {
                               cursor="pointer"
                               px={2}
                               py={1}
+                              borderRadius="full"
                               variant={active ? "solid" : "outline"}
                               colorPalette={active ? "blue" : "gray"}
                               onClick={() => toggleTag(tag)}
@@ -438,6 +586,16 @@ export function ReasoningTracePanel() {
                         })}
                       </Flex>
 
+                      <Text
+                        fontSize="2xs"
+                        fontWeight="semibold"
+                        letterSpacing="wide"
+                        textTransform="uppercase"
+                        color="gray.400"
+                        mb={1.5}
+                      >
+                        Guidance note
+                      </Text>
                       <Textarea
                         value={draft.note || ""}
                         onChange={(e) => {
@@ -445,10 +603,11 @@ export function ReasoningTracePanel() {
                           setDraft((d) => ({ ...d, note: value }));
                           setSaved(false);
                         }}
-                        placeholder="What was right or wrong? What should the agent do next time? (becomes a guideline)"
+                        placeholder="What was right or wrong? What should the agent do next time?"
                         fontSize="xs"
+                        bg="white"
                         rows={3}
-                        mb={2}
+                        mb={3}
                       />
 
                       <Input
@@ -460,31 +619,50 @@ export function ReasoningTracePanel() {
                         }}
                         placeholder="Reviewer (optional)"
                         fontSize="xs"
+                        bg="white"
                         size="sm"
-                        mb={3}
                       />
-
-                      <HStack gap={3}>
-                        <Button
-                          size="sm"
-                          colorPalette="blue"
-                          onClick={saveFeedback}
-                          loading={saving}
-                          loadingText="Saving"
-                        >
-                          Save feedback
-                        </Button>
-                        {saved && (
-                          <HStack gap={1} color="green.600">
-                            <Check size={12} />
-                            <Text fontSize="xs">Saved</Text>
-                          </HStack>
-                        )}
-                      </HStack>
                     </Box>
                   </>
                 )}
               </Dialog.Body>
+
+              {/* Pinned footer: the Save action is always reachable */}
+              <Dialog.Footer
+                px={6}
+                py={4}
+                borderTopWidth="1px"
+                borderColor="gray.100"
+              >
+                <HStack justify="space-between" w="100%">
+                  <Text fontSize="xs" color="gray.400">
+                    {saved
+                      ? draft.updated_at
+                        ? `Saved ${new Date(draft.updated_at).toLocaleString()}`
+                        : "Saved"
+                      : hasFeedbackSignal(draft)
+                      ? "Unsaved changes"
+                      : "Not yet reviewed"}
+                  </Text>
+                  <HStack gap={3}>
+                    {saved && (
+                      <HStack gap={1} color="green.600">
+                        <Check size={13} />
+                        <Text fontSize="xs">Saved</Text>
+                      </HStack>
+                    )}
+                    <Button
+                      size="sm"
+                      colorPalette="blue"
+                      onClick={saveFeedback}
+                      loading={saving}
+                      loadingText="Saving"
+                    >
+                      Save feedback
+                    </Button>
+                  </HStack>
+                </HStack>
+              </Dialog.Footer>
             </Dialog.Content>
           </Dialog.Positioner>
         </Portal>
